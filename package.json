@@ -10,7 +10,8 @@
   "scripts": {
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -28,5 +29,10 @@
   "bugs": {
     "url": "https://github.com/Igordel004/corp-messenger/issues"
   },
-  "homepage": "https://github.com/Igordel004/corp-messenger#readme"
+  "homepage": "https://github.com/Igordel004/corp-messenger#readme",
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "husky": "^9.1.7"
+  }
 }
