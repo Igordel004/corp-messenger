@@ -5,8 +5,9 @@
   "description": "Серверная часть корпоративного мессенджера",
   "main": "src/index.ts",
   "scripts": {
-    "lint": "echo \"Server lint: no linter configured yet\"",
-    "test": "echo \"Server test: no tests configured yet\"",
-    "build": "echo \"Server build: no build step configured yet\""
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
   }
 }
