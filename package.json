@@ -1,0 +1,32 @@
+{
+  "name": "corp-messenger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web-приложение корпоративного мессенджера с поддержкой тематических каналов и ролевого разграничения доступа",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Igordel004/corp-messenger.git"
+  },
+  "keywords": [
+    "messenger",
+    "rbac",
+    "react",
+    "express",
+    "websocket"
+  ],
+  "author": "Токарев И. Е.",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Igordel004/corp-messenger/issues"
+  },
+  "homepage": "https://github.com/Igordel004/corp-messenger#readme"
+}

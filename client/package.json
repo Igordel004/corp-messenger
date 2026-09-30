@@ -1,0 +1,11 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Клиентская часть корпоративного мессенджера (SPA)",
+  "scripts": {
+    "lint": "echo \"Client lint: no linter configured yet\"",
+    "test": "echo \"Client test: no tests configured yet\"",
+    "build": "echo \"Client build: no build step configured yet\""
+  }
+}
