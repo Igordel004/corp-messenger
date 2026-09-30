@@ -32,6 +32,6 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['node_modules/**', 'dist/**', 'build/**', '.husky/**'],
+    ignores: ['node_modules/**', 'dist/**', 'build/**', '.husky/**', 'scripts/**'],
   },
 );
