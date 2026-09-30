@@ -8,7 +8,10 @@
     "client"
   ],
   "scripts": {
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "prepare": "husky"
@@ -33,6 +36,9 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
-    "husky": "^9.1.7"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.9.9"
   }
 }
