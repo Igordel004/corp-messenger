@@ -22,6 +22,7 @@ module.exports = tseslint.config(
       'no-console': 'off',
       semi: ['error', 'always'],
       quotes: ['error', 'single', { avoidEscape: true }],
+      complexity: ['warn', 10],
     },
   },
   {
