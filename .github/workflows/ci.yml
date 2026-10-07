@@ -18,14 +18,14 @@ concurrency:
 jobs:
   lint:
     name: Code Quality & Style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -40,22 +40,22 @@ jobs:
         run: npx eslint . --format json --output-file eslint-report.json || true
 
       - name: Upload ESLint Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: eslint-report
           path: eslint-report.json
 
   test:
     name: Unit & Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -67,7 +67,7 @@ jobs:
         run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
 
       - name: Upload Test Results & Coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-artifacts
           path: |
@@ -77,15 +77,15 @@ jobs:
 
   build:
     name: Build & Package Artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -97,7 +97,7 @@ jobs:
         run: npm run build
 
       - name: Package Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: messenger-production-build
           path: |
@@ -107,27 +107,27 @@ jobs:
 
   metrics:
     name: Collect & Publish Quality Metrics
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint, test, build]
 
     steps:
       - name: Checkout repository (full history for git metrics)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
       - name: Download ESLint Report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: eslint-report
 
       - name: Download Test Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: test-artifacts
 
@@ -136,7 +136,7 @@ jobs:
 
   deploy:
     name: Deploy to Test Environment (GitHub Pages)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
@@ -145,7 +145,7 @@ jobs:
 
     steps:
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: messenger-production-build
           path: build-artifacts
