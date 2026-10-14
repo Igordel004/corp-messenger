@@ -383,6 +383,20 @@ a:hover {
   flex-direction: column;
   align-items: flex-end;
   line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.app-header__identity:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* Подсветка, когда открыт сам профиль */
+.app-header__identity--active {
+  background: var(--color-primary-light);
 }
 
 .app-header__name {
