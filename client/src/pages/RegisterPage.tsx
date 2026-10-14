@@ -3,6 +3,8 @@ import { Link } from 'react-router';
 import { registerEmployee, type RegisteredUser } from '../api/auth';
 import { getApiErrorMessage } from '../api/client';
 
+const CORPORATE_DOMAIN = '@corp.messenger.com';
+
 // Локальные ошибки формы (проверяются до отправки на сервер)
 interface FieldErrors {
   fullName?: string;
@@ -10,10 +12,8 @@ interface FieldErrors {
   password?: string;
 }
 
-const CORPORATE_DOMAIN = '@corp.messenger.com';
-
-// Клиентская валидация полей формы
-const validateForm = (fullName: string, email: string, password: string): FieldErrors => {
+// Клиентская валидация полей формы регистрации
+const validateRegisterForm = (fullName: string, email: string, password: string): FieldErrors => {
   const errors: FieldErrors = {};
   if (fullName.trim().length === 0) {
     errors.fullName = 'Введите имя сотрудника';
@@ -40,7 +40,7 @@ export const RegisterPage = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const errors = validateForm(fullName, email, password);
+    const errors = validateRegisterForm(fullName, email, password);
     setFieldErrors(errors);
     setServerError(null);
     if (Object.keys(errors).length > 0) {
@@ -49,11 +49,7 @@ export const RegisterPage = () => {
 
     setIsSubmitting(true);
     try {
-      const user = await registerEmployee({
-        fullName: fullName.trim(),
-        email,
-        password,
-      });
+      const user = await registerEmployee({ fullName: fullName.trim(), email, password });
       setSuccessUser(user);
       setFullName('');
       setEmail('');
@@ -69,73 +65,121 @@ export const RegisterPage = () => {
   // Экран успешной регистрации
   if (successUser) {
     return (
-      <main style={{ maxWidth: 420, margin: '40px auto', fontFamily: 'sans-serif' }}>
-        <h1>Регистрация завершена</h1>
-        <p>
-          Сотрудник <strong>{successUser.fullName}</strong> ({successUser.email}) зарегистрирован.
-          Роль: {successUser.globalRole}, статус: {successUser.status}.
-        </p>
-        <button type="button" onClick={() => setSuccessUser(null)}>
-          Зарегистрировать ещё одного сотрудника
-        </button>
+      <main className="auth-page">
+        <div className="auth-card">
+          <div className="auth-card__header">
+            <span className="logo__mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" />
+              </svg>
+            </span>
+            <h1 className="auth-card__title">Регистрация завершена</h1>
+            <p className="auth-card__subtitle">Аккаунт сотрудника создан</p>
+          </div>
+
+          <div className="profile__tile" style={{ marginBottom: 16 }}>
+            <p className="profile__tile-label">Сотрудник</p>
+            <p className="profile__tile-value">{successUser.fullName}</p>
+            <p className="profile__email" style={{ marginTop: 4 }}>
+              {successUser.email}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <span className="badge badge--member">{successUser.globalRole}</span>
+            <span
+              className={`badge ${successUser.status === 'ACTIVE' ? 'badge--online' : 'badge--danger'}`}
+            >
+              {successUser.status === 'ACTIVE' ? 'Активен' : 'Заблокирован'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="button button--secondary button--block"
+            onClick={() => setSuccessUser(null)}
+          >
+            Зарегистрировать ещё одного сотрудника
+          </button>
+
+          <p className="auth-card__footer">
+            <Link to="/login">Вернуться ко входу</Link>
+          </p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      <h1>Регистрация сотрудника</h1>
-      <form onSubmit={handleSubmit} noValidate>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="fullName">Имя и фамилия</label>
-          <br />
-          <input
-            id="fullName"
-            type="text"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            style={{ width: '100%', padding: 6 }}
-          />
-          {fieldErrors.fullName && (
-            <p style={{ color: 'red', margin: '4px 0 0' }}>{fieldErrors.fullName}</p>
-          )}
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-card__header">
+          <span className="logo__mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M15 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-2.67 0-8 1.34-8 4v2h10.36a6.45 6.45 0 0 1-.36-2v-2.5A3.5 3.5 0 0 1 15 14Z" />
+            </svg>
+          </span>
+          <h1 className="auth-card__title">Регистрация сотрудника</h1>
+          <p className="auth-card__subtitle">Создание аккаунта в корпоративной системе</p>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="email">Корпоративный email</label>
-          <br />
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            style={{ width: '100%', padding: 6 }}
-          />
-          {fieldErrors.email && (
-            <p style={{ color: 'red', margin: '4px 0 0' }}>{fieldErrors.email}</p>
-          )}
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="password">Пароль</label>
-          <br />
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            style={{ width: '100%', padding: 6 }}
-          />
-          {fieldErrors.password && (
-            <p style={{ color: 'red', margin: '4px 0 0' }}>{fieldErrors.password}</p>
-          )}
-        </div>
-        {serverError && <p style={{ color: 'red' }}>{serverError}</p>}
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Регистрация...' : 'Зарегистрироваться'}
-        </button>
-      </form>
-      <p style={{ marginTop: 16 }}>
-        Уже есть аккаунт? <Link to="/login">Войти в систему</Link>
-      </p>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="field">
+            <label className="field__label" htmlFor="fullName">
+              Имя и фамилия
+            </label>
+            <input
+              id="fullName"
+              type="text"
+              className="input"
+              value={fullName}
+              placeholder="Иванов Иван"
+              onChange={(event) => setFullName(event.target.value)}
+            />
+            {fieldErrors.fullName && <p className="field__error">{fieldErrors.fullName}</p>}
+          </div>
+
+          <div className="field">
+            <label className="field__label" htmlFor="email">
+              Корпоративный email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="input"
+              value={email}
+              placeholder="ivanov@corp.messenger.com"
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            {fieldErrors.email && <p className="field__error">{fieldErrors.email}</p>}
+          </div>
+
+          <div className="field">
+            <label className="field__label" htmlFor="password">
+              Пароль
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              value={password}
+              placeholder="Минимум 8 символов"
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            {fieldErrors.password && <p className="field__error">{fieldErrors.password}</p>}
+          </div>
+
+          {serverError && <p className="form-error">{serverError}</p>}
+
+          <button type="submit" className="button button--block" disabled={isSubmitting}>
+            {isSubmitting ? 'Регистрация...' : 'Зарегистрироваться'}
+          </button>
+        </form>
+
+        <p className="auth-card__footer">
+          Уже есть аккаунт? <Link to="/login">Войти в систему</Link>
+        </p>
+      </div>
     </main>
   );
 };
