@@ -50,6 +50,21 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: messenger_user
+          POSTGRES_PASSWORD: messenger_password
+          POSTGRES_DB: corp_messenger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -63,8 +78,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://messenger_user:messenger_password@localhost:5432/corp_messenger?schema=public
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: server
+
       - name: Run Vitest & Supertest with Coverage
         run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
+        env:
+          DATABASE_URL: postgresql://messenger_user:messenger_password@localhost:5432/corp_messenger?schema=public
 
       - name: Upload Test Results & Coverage
         uses: actions/upload-artifact@v6
