@@ -451,12 +451,16 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: calc(100% - 16px);
   height: 56px;
   margin: 2px 8px;
   padding: 8px 12px;
+  border: none;
   border-radius: 10px;
   background: transparent;
   color: inherit;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -515,14 +519,10 @@ a:hover {
   flex-shrink: 0;
 }
 
-.channel-item__preview {
-  margin: 2px 0 0;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.channel-item__badges {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 /* Основная область контента */
@@ -821,6 +821,12 @@ a:hover {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 20px;
+}
+
+/* В строке действий формы обе кнопки — стандартной высоты 44px */
+.modal__actions .button,
+.modal__actions .button--secondary {
+  height: 44px;
 }
 
 /* Переключатель типа приватности */

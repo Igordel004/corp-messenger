@@ -154,3 +154,44 @@ describe('Integration Test: POST /api/channels (реальная БД)', () => {
     expect(response.status).toBe(400);
   });
 });
+
+describe('Integration Test: GET /api/channels (реальная БД)', () => {
+  beforeAll(async () => {
+    await cleanup();
+    await createTestUser();
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await disconnectDatabase();
+  });
+
+  it('возвращает каналы пользователя с ролью и типом', async () => {
+    await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `test-channel-list-${RUN_ID}`, type: 'PRIVATE' });
+
+    const response = await request(app)
+      .get('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body)).toBe(true);
+
+    const created = response.body.find(
+      (channel: { name: string }) => channel.name === `test-channel-list-${RUN_ID}`,
+    );
+    expect(created).toMatchObject({
+      id: expect.any(String),
+      type: 'PRIVATE',
+      role: 'OWNER',
+      joinedAt: expect.any(String),
+    });
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app).get('/api/channels');
+    expect(response.status).toBe(401);
+  });
+});

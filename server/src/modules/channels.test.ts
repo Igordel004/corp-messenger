@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createChannelWithOwner } from './channels';
+import { createChannelWithOwner, listUserChannels } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
 // Идентификатор тестового создателя
@@ -79,5 +79,57 @@ describe('Unit Test: Транзакционное создание канала'
     expect(mock.channel.create).toHaveBeenCalledWith({
       data: { name: 'Разработка', type: ChannelType.PRIVATE },
     });
+  });
+});
+
+describe('Unit Test: Список каналов пользователя', () => {
+  it('преобразует записи участничества в каналы с локальной ролью', async () => {
+    const joinedAt = new Date('2026-01-01T10:00:00Z');
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        role: ChannelRole.OWNER,
+        joinedAt,
+        channel: { id: 'ch-1', name: 'Разработка', type: ChannelType.PUBLIC },
+      },
+      {
+        role: ChannelRole.MEMBER,
+        joinedAt,
+        channel: { id: 'ch-2', name: 'Маркетинг', type: ChannelType.PRIVATE },
+      },
+    ]);
+    const prisma = { channelMember: { findMany } };
+
+    const result = await listUserChannels(prisma as never, CREATOR_ID);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { userId: CREATOR_ID },
+      include: { channel: true },
+      orderBy: { joinedAt: 'asc' },
+    });
+    expect(result).toEqual([
+      {
+        id: 'ch-1',
+        name: 'Разработка',
+        type: ChannelType.PUBLIC,
+        role: ChannelRole.OWNER,
+        joinedAt,
+      },
+      {
+        id: 'ch-2',
+        name: 'Маркетинг',
+        type: ChannelType.PRIVATE,
+        role: ChannelRole.MEMBER,
+        joinedAt,
+      },
+    ]);
+  });
+
+  it('возвращает пустой список при отсутствии участничества', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = { channelMember: { findMany } };
+
+    const result = await listUserChannels(prisma as never, CREATOR_ID);
+
+    expect(result).toEqual([]);
   });
 });

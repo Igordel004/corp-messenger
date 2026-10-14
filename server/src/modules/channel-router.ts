@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import { requireAuth } from './middleware';
-import { createChannelWithOwner } from './channels';
+import { createChannelWithOwner, listUserChannels } from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
 
@@ -49,6 +49,12 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
       type: channel.type,
       role: 'OWNER',
     });
+  });
+
+  // Каналы текущего пользователя — источник данных для боковой панели
+  router.get('/', requireAuth, async (req: Request, res: Response) => {
+    const channels = await listUserChannels(prisma, req.session!.sub);
+    res.status(200).json(channels);
   });
 
   return router;
