@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Конфигурация сборщика клиентского SPA
-export default defineConfig({
+// Базовый путь для продакшен-сборки: GitHub Pages разворачивает проект
+// в подпапке /corp-messenger/, поэтому ассеты и маршруты должны на неё ссылаться.
+// В dev-режиме используется корень.
+export default defineConfig(({ command }) => ({
   plugins: [react()],
+  base: command === 'build' ? '/corp-messenger/' : '/',
   build: {
     outDir: 'dist',
     sourcemap: true,
@@ -16,4 +19,4 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:3000',
     },
   },
-});
+}));
