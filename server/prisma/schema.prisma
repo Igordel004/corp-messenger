@@ -1,0 +1,96 @@
+// Схема базы данных корпоративного мессенджера (PostgreSQL 17 + Prisma ORM 7)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Глобальная роль пользователя в системе
+enum GlobalRole {
+  USER
+  ADMIN
+}
+
+// Статус активности аккаунта
+enum AccountStatus {
+  ACTIVE
+  BLOCKED
+}
+
+// Тип приватности канала
+enum ChannelType {
+  PUBLIC
+  PRIVATE
+}
+
+// Локальная роль участника внутри канала
+enum ChannelRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+// Учётная запись сотрудника
+model User {
+  id           String        @id @default(uuid())
+  fullName     String        @map("full_name")
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  globalRole   GlobalRole    @default(USER) @map("global_role")
+  status       AccountStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  memberships ChannelMember[]
+  messages    Message[]
+
+  @@map("users")
+}
+
+// Тематический канал
+model Channel {
+  id        String      @id @default(uuid())
+  name      String
+  type      ChannelType
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  members   ChannelMember[]
+  messages  Message[]
+
+  @@map("channels")
+}
+
+// Участие сотрудника в канале с локальной ролью
+model ChannelMember {
+  id        String      @id @default(uuid())
+  userId    String      @map("user_id")
+  channelId String      @map("channel_id")
+  role      ChannelRole @default(MEMBER)
+  joinedAt  DateTime    @default(now()) @map("joined_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@map("channel_members")
+}
+
+// Сообщение внутри канала
+model Message {
+  id        String   @id @default(uuid())
+  content   String
+  authorId  String   @map("author_id")
+  channelId String   @map("channel_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  author  User    @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("messages")
+}

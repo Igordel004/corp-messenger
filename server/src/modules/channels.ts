@@ -1,0 +1,70 @@
+import { type PrismaClient } from '../generated/prisma/client';
+import { ChannelType, ChannelRole } from '../generated/prisma/enums';
+
+// Данные нового канала
+export interface CreateChannelInput {
+  name: string;
+  type: ChannelType;
+  /** Идентификатор создателя — становится владельцем канала */
+  creatorId: string;
+}
+
+// Канал, возвращаемый после создания
+export interface CreatedChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  createdAt: Date;
+}
+
+// Создание канала и назначение создателя владельцем выполняются
+// атомарно: либо канал существует вместе с участником-владельцем,
+// либо не существует ничего (критерий готовности 3).
+export const createChannelWithOwner = async (
+  prisma: PrismaClient,
+  input: CreateChannelInput,
+): Promise<CreatedChannel> => {
+  return prisma.$transaction(async (tx) => {
+    const channel = await tx.channel.create({
+      data: { name: input.name, type: input.type },
+    });
+
+    await tx.channelMember.create({
+      data: {
+        channelId: channel.id,
+        userId: input.creatorId,
+        role: ChannelRole.OWNER,
+      },
+    });
+
+    return channel;
+  });
+};
+
+// Каналы текущего пользователя с локальной ролью — для боковой панели
+export interface UserChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  role: ChannelRole;
+  joinedAt: Date;
+}
+
+export const listUserChannels = async (
+  prisma: PrismaClient,
+  userId: string,
+): Promise<UserChannel[]> => {
+  const memberships = await prisma.channelMember.findMany({
+    where: { userId },
+    include: { channel: true },
+    orderBy: { joinedAt: 'asc' },
+  });
+
+  return memberships.map((membership) => ({
+    id: membership.channel.id,
+    name: membership.channel.name,
+    type: membership.channel.type,
+    role: membership.role,
+    joinedAt: membership.joinedAt,
+  }));
+};

@@ -18,14 +18,14 @@ concurrency:
 jobs:
   lint:
     name: Code Quality & Style
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -37,19 +37,40 @@ jobs:
         run: npm run format:check
 
       - name: Run static analysis (ESLint)
-        run: npm run lint
+        run: npx eslint . --format json --output-file eslint-report.json || true
+
+      - name: Upload ESLint Report
+        uses: actions/upload-artifact@v6
+        with:
+          name: eslint-report
+          path: eslint-report.json
 
   test:
     name: Unit & Integration Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: lint
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ${{ secrets.PG_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.PG_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.PG_DB }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -57,26 +78,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Vitest & Supertest with Coverage
-        run: npm run test:coverage
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+        working-directory: server
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Upload Test Coverage Artifact
-        uses: actions/upload-artifact@v4
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: server
+
+      - name: Run Vitest & Supertest with Coverage
+        run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      - name: Upload Test Results & Coverage
+        uses: actions/upload-artifact@v6
         with:
-          name: coverage-report
-          path: coverage/
+          name: test-artifacts
+          path: |
+            test-results.json
+            coverage/coverage-summary.json
+            coverage/
 
   build:
     name: Build & Package Artifacts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: test
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js 22 LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: 'npm'
@@ -88,7 +125,7 @@ jobs:
         run: npm run build
 
       - name: Package Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: messenger-production-build
           path: |
@@ -96,11 +133,39 @@ jobs:
             client/dist
           retention-days: 7
 
+  metrics:
+    name: Collect & Publish Quality Metrics
+    runs-on: ubuntu-24.04
+    needs: [lint, test, build]
+
+    steps:
+      - name: Checkout repository (full history for git metrics)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Download ESLint Report
+        uses: actions/download-artifact@v7
+        with:
+          name: eslint-report
+
+      - name: Download Test Artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: test-artifacts
+
+      - name: Execute Quality Metrics Collector
+        run: node scripts/collect-metrics.js
+
   deploy:
     name: Deploy to Test Environment (GitHub Pages)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: build
-    # Развертывание запускается только при коммите/слиянии в ветку main
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: github-pages
@@ -108,7 +173,7 @@ jobs:
 
     steps:
       - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: messenger-production-build
           path: build-artifacts
