@@ -1,0 +1,9 @@
+# Единые окончания строк LF во всём репозитории.
+# Prettier и ESLint ожидают LF; без этого правила локальная проверка на Windows
+# падает из-за CRLF, который core.autocrlf добавляет при чекауте.
+* text=auto eol=lf
+
+# Windows-скрипты должны сохранять CRLF, иначе cmd/PowerShell откажутся их выполнять
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
