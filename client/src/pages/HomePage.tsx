@@ -1,42 +1,77 @@
-import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 
-// Главный экран после входа: данные сотрудника и управление сессией
-export const HomePage = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+// Первоначальные сотрудника для аватара
+const getInitials = (fullName: string): string =>
+  fullName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 
-  // Выход: удаление токена и перенаправление на страницу входа
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
-  };
+// Перевод глобальной роли на русский
+const ROLE_LABELS: Record<string, string> = {
+  USER: 'Пользователь',
+  ADMIN: 'Администратор',
+};
+
+// Перевод статуса аккаунта на русский
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Активен',
+  BLOCKED: 'Заблокирован',
+};
+
+// Экран профиля сотрудника (располагается внутри каркаса приложения)
+export const HomePage = () => {
+  const { user } = useAuth();
 
   if (!user) {
     return null;
   }
 
   return (
-    <main style={{ maxWidth: 520, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      <h1>Корпоративный мессенджер</h1>
-      <section style={{ border: '1px solid #ccc', borderRadius: 6, padding: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Профиль сотрудника</h2>
-        <p>
-          <strong>Имя:</strong> {user.fullName}
-        </p>
-        <p>
-          <strong>Email:</strong> {user.email}
-        </p>
-        <p>
-          <strong>Роль:</strong> {user.globalRole}
-        </p>
-        <p>
-          <strong>Статус:</strong> {user.status}
-        </p>
-      </section>
-      <button type="button" onClick={handleLogout} style={{ marginTop: 16 }}>
-        Выйти
-      </button>
-    </main>
+    <div className="profile">
+      <div className="profile__card">
+        <div className="profile__header">
+          <div className="profile__avatar" aria-hidden="true">
+            {getInitials(user.fullName)}
+          </div>
+          <div>
+            <h1 className="profile__name">{user.fullName}</h1>
+            <p className="profile__email">{user.email}</p>
+          </div>
+        </div>
+
+        <div className="profile__grid">
+          <div className="profile__tile">
+            <p className="profile__tile-label">Глобальная роль</p>
+            <p className="profile__tile-value">{ROLE_LABELS[user.globalRole] ?? user.globalRole}</p>
+          </div>
+          <div className="profile__tile">
+            <p className="profile__tile-label">Статус аккаунта</p>
+            <p className="profile__tile-value">{STATUS_LABELS[user.status] ?? user.status}</p>
+          </div>
+        </div>
+
+        <div className="profile__row">
+          <span className="profile__row-label">Идентификатор</span>
+          <span className="badge badge--member">{user.id.slice(0, 8)}</span>
+        </div>
+        <div className="profile__row">
+          <span className="profile__row-label">Роль в системе</span>
+          <span
+            className={`badge ${user.globalRole === 'ADMIN' ? 'badge--owner' : 'badge--member'}`}
+          >
+            {user.globalRole}
+          </span>
+        </div>
+        <div className="profile__row">
+          <span className="profile__row-label">Состояние</span>
+          <span className={`badge ${user.status === 'ACTIVE' ? 'badge--online' : 'badge--danger'}`}>
+            {STATUS_LABELS[user.status] ?? user.status}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 };

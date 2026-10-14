@@ -57,45 +57,60 @@ export const LoginPage = () => {
   };
 
   return (
-    <main style={{ maxWidth: 420, margin: '40px auto', fontFamily: 'sans-serif' }}>
-      <h1>Вход в систему</h1>
-      <form onSubmit={handleSubmit} noValidate>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="email">Корпоративный email</label>
-          <br />
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            style={{ width: '100%', padding: 6 }}
-          />
-          {fieldErrors.email && (
-            <p style={{ color: 'red', margin: '4px 0 0' }}>{fieldErrors.email}</p>
-          )}
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-card__header">
+          <span className="logo__mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6A1 1 0 0 1 4.3 19v-3.1A2.5 2.5 0 0 1 4 14.5v-9Z" />
+            </svg>
+          </span>
+          <h1 className="auth-card__title">Вход в систему</h1>
+          <p className="auth-card__subtitle">Корпоративный мессенджер</p>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label htmlFor="password">Пароль</label>
-          <br />
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            style={{ width: '100%', padding: 6 }}
-          />
-          {fieldErrors.password && (
-            <p style={{ color: 'red', margin: '4px 0 0' }}>{fieldErrors.password}</p>
-          )}
-        </div>
-        {serverError && <p style={{ color: 'red' }}>{serverError}</p>}
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? 'Вход...' : 'Войти'}
-        </button>
-      </form>
-      <p style={{ marginTop: 16 }}>
-        Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
-      </p>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <div className="field">
+            <label className="field__label" htmlFor="email">
+              Корпоративный email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="input"
+              value={email}
+              placeholder="ivanov@corp.messenger.com"
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            {fieldErrors.email && <p className="field__error">{fieldErrors.email}</p>}
+          </div>
+
+          <div className="field">
+            <label className="field__label" htmlFor="password">
+              Пароль
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="input"
+              value={password}
+              placeholder="••••••••"
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            {fieldErrors.password && <p className="field__error">{fieldErrors.password}</p>}
+          </div>
+
+          {serverError && <p className="form-error">{serverError}</p>}
+
+          <button type="submit" className="button button--block" disabled={isSubmitting}>
+            {isSubmitting ? 'Вход...' : 'Войти'}
+          </button>
+        </form>
+
+        <p className="auth-card__footer">
+          Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+        </p>
+      </div>
     </main>
   );
 };
