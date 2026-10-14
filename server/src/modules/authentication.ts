@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import { validateCorporateEmail } from '../utils/validation';
 import { signSessionToken } from '../utils/token';
+import { requireAuth } from './middleware';
 import { type PrismaClient } from '../generated/prisma/client';
 
 interface LoginBody {
@@ -57,6 +58,27 @@ export const createAuthenticationRouter = (prisma: PrismaClient): express.Router
     // Критерий 1: валидная пара даёт подписанный токен сессии
     const token = signSessionToken({ sub: user.id, role: user.globalRole });
     res.status(200).json({ token });
+  });
+
+  // Данные текущего пользователя: доступ только при валидном токене
+  router.get('/me', requireAuth, async (req: Request, res: Response) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.session!.sub },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        globalRole: true,
+        status: true,
+      },
+    });
+
+    if (!user) {
+      res.status(401).json({ message: 'Пользователь не найден' });
+      return;
+    }
+
+    res.status(200).json(user);
   });
 
   return router;
