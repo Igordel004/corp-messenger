@@ -1,15 +1,66 @@
+import { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
+import { fetchUserChannels, type UserChannel } from '../api/channels';
+import { getApiErrorMessage } from '../api/client';
+import { CreateChannelModal } from './CreateChannelModal';
+import { ChannelList } from './ChannelList';
 
 // Каркас приложения: шапка, боковая панель каналов и основная область
 export const AppLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  const [channels, setChannels] = useState<UserChannel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+
+  // Загрузка каналов пользователя при монтировании каркаса
+  useEffect(() => {
+    let isCancelled = false;
+
+    fetchUserChannels()
+      .then((data) => {
+        if (isCancelled) {
+          return;
+        }
+        setChannels(data);
+        setActiveChannelId((current) => current ?? data[0]?.id ?? null);
+      })
+      .catch((error) => {
+        if (!isCancelled) {
+          setLoadError(getApiErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   // Выход: удаление сессии и перенаправление на страницу входа
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
+  };
+
+  // Новый канал становится выбранным и попадает в начало списка
+  const handleChannelCreated = (channel: {
+    id: string;
+    name: string;
+    type: UserChannel['type'];
+    role: UserChannel['role'];
+  }) => {
+    setIsModalOpen(false);
+    setChannels((current) => [{ ...channel, joinedAt: new Date().toISOString() }, ...current]);
+    setActiveChannelId(channel.id);
   };
 
   return (
@@ -49,27 +100,22 @@ export const AppLayout = () => {
             <button
               type="button"
               className="button button--ghost"
-              title="Создать канал (появится в Этапе 3)"
+              title="Создать канал"
               aria-label="Создать канал"
+              onClick={() => setIsModalOpen(true)}
             >
               +
             </button>
           </div>
-          <div className="sidebar__search">
-            <input
-              className="input"
-              type="search"
-              placeholder="Поиск каналов"
-              aria-label="Поиск каналов"
-              disabled
-            />
-          </div>
+
           <div className="sidebar__list">
-            <p className="sidebar__empty">
-              Список каналов появится позже.
-              <br />
-              Сейчас это каркас прототипа.
-            </p>
+            <ChannelList
+              channels={channels}
+              isLoading={isLoading}
+              loadError={loadError}
+              activeChannelId={activeChannelId}
+              onSelect={setActiveChannelId}
+            />
           </div>
         </aside>
 
@@ -77,6 +123,13 @@ export const AppLayout = () => {
           <Outlet />
         </main>
       </div>
+
+      {isModalOpen && (
+        <CreateChannelModal
+          onCancel={() => setIsModalOpen(false)}
+          onCreated={handleChannelCreated}
+        />
+      )}
     </div>
   );
 };
