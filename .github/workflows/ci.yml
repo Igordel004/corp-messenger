@@ -84,6 +84,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://messenger_user:messenger_password@localhost:5432/corp_messenger?schema=public
 
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        working-directory: server
+
       - name: Run Vitest & Supertest with Coverage
         run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
         env:
