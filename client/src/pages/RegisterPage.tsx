@@ -116,7 +116,7 @@ export const RegisterPage = () => {
         <div className="auth-card__header">
           <span className="logo__mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M15 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-2.67 0-8 1.34-8 4v2h10.36a6.45 6.45 0 0 1-.36-2v-2.5A3.5 3.5 0 0 1 15 14Z" />
+              <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4Zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6Zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4Z" />
             </svg>
           </span>
           <h1 className="auth-card__title">Регистрация сотрудника</h1>
