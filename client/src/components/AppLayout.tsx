@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { fetchUserChannels, type UserChannel } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
@@ -10,6 +10,8 @@ import { ChannelList } from './ChannelList';
 export const AppLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const isProfileOpen = pathname === '/profile';
 
   const [channels, setChannels] = useState<UserChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,26 +68,25 @@ export const AppLayout = () => {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="logo">
+        <Link to="/" className="logo" aria-label="Перейти к чату">
           <span className="logo__mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
               <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6A1 1 0 0 1 4.3 19v-3.1A2.5 2.5 0 0 1 4 14.5v-9Z" />
             </svg>
           </span>
           <span className="logo__text">Мессенджер</span>
-        </div>
+        </Link>
 
         {user && (
           <div className="app-header__user">
-            <div className="app-header__identity">
+            <Link
+              to="/profile"
+              className={`app-header__identity${isProfileOpen ? ' app-header__identity--active' : ''}`}
+              aria-label="Перейти к профилю"
+            >
               <span className="app-header__name">{user.fullName}</span>
               <span className="app-header__email">{user.email}</span>
-            </div>
-            <span
-              className={`badge ${user.status === 'ACTIVE' ? 'badge--online' : 'badge--danger'}`}
-            >
-              {user.status === 'ACTIVE' ? 'Активен' : 'Заблокирован'}
-            </span>
+            </Link>
             <button type="button" className="button button--secondary" onClick={handleLogout}>
               Выйти
             </button>
