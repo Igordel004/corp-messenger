@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { registerEmployee, type RegisteredUser } from '../api/auth';
 import { getApiErrorMessage } from '../api/client';
 
@@ -132,6 +133,9 @@ export const RegisterPage = () => {
           {isSubmitting ? 'Регистрация...' : 'Зарегистрироваться'}
         </button>
       </form>
+      <p style={{ marginTop: 16 }}>
+        Уже есть аккаунт? <Link to="/login">Войти в систему</Link>
+      </p>
     </main>
   );
 };

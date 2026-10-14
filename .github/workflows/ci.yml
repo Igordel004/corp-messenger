@@ -54,9 +54,9 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: messenger_user
-          POSTGRES_PASSWORD: messenger_password
-          POSTGRES_DB: corp_messenger
+          POSTGRES_USER: ${{ secrets.PG_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.PG_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.PG_DB }}
         ports:
           - 5432:5432
         options: >-
@@ -82,7 +82,7 @@ jobs:
         run: npx prisma migrate deploy
         working-directory: server
         env:
-          DATABASE_URL: postgresql://messenger_user:messenger_password@localhost:5432/corp_messenger?schema=public
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -91,7 +91,8 @@ jobs:
       - name: Run Vitest & Supertest with Coverage
         run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
         env:
-          DATABASE_URL: postgresql://messenger_user:messenger_password@localhost:5432/corp_messenger?schema=public
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
       - name: Upload Test Results & Coverage
         uses: actions/upload-artifact@v6
