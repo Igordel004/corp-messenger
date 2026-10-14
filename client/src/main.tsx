@@ -1,11 +1,11 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RegisterPage } from './pages/RegisterPage';
 
 // Точка входа клиентского SPA (каркас интерфейса будет расширен в Этапе 2)
 const App = () => (
   <main>
-    <h1>Корпоративный мессенджер</h1>
-    <p>Прототип в разработке</p>
+    <RegisterPage />
   </main>
 );
 

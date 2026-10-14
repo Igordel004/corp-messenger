@@ -10,5 +10,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: '127.0.0.1',
+    // Проксирование API-запросов на сервер разработки (Node.js/Express)
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+    },
   },
 });
