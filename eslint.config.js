@@ -32,6 +32,24 @@ module.exports = tseslint.config(
     },
   },
   {
-    ignores: ['node_modules/**', 'dist/**', 'build/**', '.husky/**', 'scripts/**'],
+    files: ['client/**/*.{ts,tsx}'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        console: 'readonly',
+      },
+    },
+  },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '.husky/**',
+      'scripts/**',
+      'server/src/generated/**',
+    ],
   },
 );
