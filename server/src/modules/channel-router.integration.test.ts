@@ -867,3 +867,229 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
     expect(response.status).toBe(401);
   });
 });
+
+describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реальная БД)', () => {
+  // Участник, чью роль меняют, и модератор для проверки прав
+  const TARGET_ID = `target-${RUN_ID}`;
+  const MODERATOR_ID = `moder-${RUN_ID}`;
+
+  const createSupportUsers = async (): Promise<void> => {
+    await prisma.user.createMany({
+      data: [
+        {
+          id: TARGET_ID,
+          fullName: 'Участник С Ролью',
+          email: `target-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+        {
+          id: MODERATOR_ID,
+          fullName: 'Модератор Ролей',
+          email: `moder-role-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+  };
+
+  const cleanupRoles = async (): Promise<void> => {
+    await prisma.channel.deleteMany({ where: { name: { startsWith: 'roles-' } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [USER_ID, TARGET_ID, MODERATOR_ID] } },
+    });
+  };
+
+  // Канал текущего пользователя с участником заданной роли
+  const createChannelWithTarget = async (targetRole: 'MEMBER' | 'MODERATOR'): Promise<string> => {
+    const created = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `roles-${targetRole.toLowerCase()}-${RUN_ID}`, type: 'PRIVATE' });
+    const channelId = created.body.id as string;
+
+    await prisma.channelMember.create({
+      data: { channelId, userId: TARGET_ID, role: targetRole },
+    });
+    return channelId;
+  };
+
+  beforeAll(async () => {
+    await cleanupRoles();
+    await createTestUser();
+    await createSupportUsers();
+  });
+
+  afterAll(async () => {
+    await cleanupRoles();
+    await disconnectDatabase();
+  });
+
+  it('владелец повышает участника до MODERATOR', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MODERATOR' });
+
+    // Критерий 2: повышение работает
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ userId: TARGET_ID, role: 'MODERATOR' });
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: TARGET_ID, channelId } },
+    });
+    expect(record?.role).toBe('MODERATOR');
+
+    // Роль видна в списке участников
+    const members = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`);
+    const entry = members.body.find((member: { userId: string }) => member.userId === TARGET_ID);
+    expect(entry.role).toBe('MODERATOR');
+  });
+
+  it('владелец понижает модератора до MEMBER', async () => {
+    const channelId = await createChannelWithTarget('MODERATOR');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MEMBER' });
+
+    // Критерий 3: понижение работает
+    expect(response.status).toBe(200);
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: TARGET_ID, channelId } },
+    });
+    expect(record?.role).toBe('MEMBER');
+  });
+
+  it('модератор не может менять роли (403)', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+    // Модератор добавляется в тот же канал
+    await prisma.channelMember.create({
+      data: { channelId, userId: MODERATOR_ID, role: 'MODERATOR' },
+    });
+
+    const moderatorToken = signAccessToken({ sub: MODERATOR_ID, role: 'USER' });
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${moderatorToken}`)
+      .send({ role: 'MODERATOR' });
+
+    // Критерий 1: смена роли доступна только владельцу
+    expect(response.status).toBe(403);
+    expect(response.body.message).toContain('владелец');
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: TARGET_ID, channelId } },
+    });
+    expect(record?.role).toBe('MEMBER');
+  });
+
+  it('роль владельца изменить нельзя (400)', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${USER_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MEMBER' });
+
+    // Критерий 4: OWNER неизменяема
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('владельца');
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: USER_ID, channelId } },
+    });
+    expect(record?.role).toBe('OWNER');
+  });
+
+  it('отклоняет назначение роли OWNER (400)', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'OWNER' });
+
+    // Критерий 4: переключение строго между MEMBER и MODERATOR
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('MEMBER или MODERATOR');
+  });
+
+  it('повторная смена на ту же роль возвращает 409', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    // Повышение до MODERATOR
+    await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MODERATOR' });
+
+    // Повторная попытка назначить ту же роль
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MODERATOR' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toContain('уже имеет');
+  });
+
+  it('не-участник канала возвращает 404', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${MODERATOR_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MODERATOR' });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .patch(`/api/channels/00000000-0000-4000-8000-000000000000/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'MODERATOR' });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('отклоняет неизвестную роль (400)', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ role: 'ADMIN' });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('отклоняет запрос без тела (400)', async () => {
+    const channelId = await createChannelWithTarget('MEMBER');
+
+    const response = await request(app)
+      .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('MEMBER или MODERATOR');
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app)
+      .patch(`/api/channels/00000000-0000-4000-8000-000000000000/members/${TARGET_ID}/role`)
+      .send({ role: 'MODERATOR' });
+
+    expect(response.status).toBe(401);
+  });
+});
