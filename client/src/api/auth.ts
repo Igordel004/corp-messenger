@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { type TokenPair } from './token';
 
 // Поля запроса регистрации сотрудника
 export interface RegisterPayload {
@@ -16,27 +17,33 @@ export interface RegisteredUser {
   status: 'ACTIVE' | 'BLOCKED';
 }
 
-// Создание аккаунта сотрудника на сервере
-export const registerEmployee = async (payload: RegisterPayload): Promise<RegisteredUser> => {
-  const response = await apiClient.post<RegisteredUser>('/auth/register', payload);
-  return response.data;
-};
-
 // Поля запроса аутентификации
 export interface LoginPayload {
   email: string;
   password: string;
 }
 
-// Ответ сервера после успешного входа
-export interface LoginResponse {
-  token: string;
-}
-
-// Аутентификация: получение токена сессии по паре email и пароль
-export const loginEmployee = async (payload: LoginPayload): Promise<LoginResponse> => {
-  const response = await apiClient.post<LoginResponse>('/auth/login', payload);
+// Создание аккаунта сотрудника на сервере
+export const registerEmployee = async (payload: RegisterPayload): Promise<RegisteredUser> => {
+  const response = await apiClient.post<RegisteredUser>('/auth/register', payload);
   return response.data;
+};
+
+// Аутентификация: сервер выдаёт пару access и refresh токенов
+export const loginEmployee = async (payload: LoginPayload): Promise<TokenPair> => {
+  const response = await apiClient.post<TokenPair>('/auth/login', payload);
+  return response.data;
+};
+
+// Обновление сессии: ротация пары токенов на сервере
+export const refreshSession = async (refreshToken: string): Promise<TokenPair> => {
+  const response = await apiClient.post<TokenPair>('/auth/refresh', { refreshToken });
+  return response.data;
+};
+
+// Выход из системы: сервер отзывает refresh-токен
+export const logoutSession = async (refreshToken: string): Promise<void> => {
+  await apiClient.post('/auth/logout', { refreshToken });
 };
 
 // Данные текущего аутентифицированного пользователя (защищённый маршрут)
