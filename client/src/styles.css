@@ -54,7 +54,6 @@
 
   /* Геометрия */
   --layout-header-height: 56px;
-  --sidebar-width: 280px;
 }
 
 /* Базовый сброс */
@@ -418,11 +417,10 @@ a:hover {
   min-height: 0;
 }
 
-/* Боковая панель каналов */
+/* Боковая панель каналов (ширина задаётся ресайзом инлайном) */
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: var(--sidebar-width);
   border-right: 1px solid var(--border-light);
   background: var(--bg-surface);
   flex-shrink: 0;
@@ -613,12 +611,19 @@ a:hover {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  /* Длинное название обрезается многоточием, не растягивая шапку */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat__subtitle {
   margin: 0;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Лента сообщений */
@@ -697,6 +702,21 @@ a:hover {
   min-height: 0;
 }
 
+/* Разделитель панелей: зажимается мышью для смены ширины.
+   Ширина 6px + курсор кол-resize дают удобную зону захвата */
+.resize-handle {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--color-primary-light);
+}
+
 .chat-area > .chat {
   flex: 1;
   min-width: 0;
@@ -705,7 +725,6 @@ a:hover {
 .members {
   display: flex;
   flex-direction: column;
-  width: 280px;
   border-left: 1px solid var(--border-light);
   background: var(--bg-surface);
   flex-shrink: 0;
@@ -801,14 +820,30 @@ a:hover {
   text-overflow: ellipsis;
 }
 
-/* Кнопка исключения: призрачная, но с красным оттенком */
+/* Кнопка исключения: призрачная, но с красным оттенком.
+   Прозрачная рамка в покое сохраняет размер при наведении */
 .member-row__remove {
   color: var(--status-danger);
+  border: 1px solid transparent;
   flex-shrink: 0;
 }
 
 .member-row__remove:hover:not(:disabled) {
   background: var(--status-danger-bg);
+  border-color: var(--status-danger);
+}
+
+/* Кнопка смены роли: компактная иконка в стиле крестика,
+   синим оттенком для отличия от красного удаления */
+.member-row__role {
+  color: var(--color-primary);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.member-row__role:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 /* Форма добавления участника */
@@ -970,6 +1005,10 @@ a:hover {
   }
 
   .members {
+    display: none;
+  }
+
+  .resize-handle {
     display: none;
   }
 }

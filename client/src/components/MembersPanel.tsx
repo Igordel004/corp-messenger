@@ -3,6 +3,7 @@ import {
   fetchChannelMembers,
   addChannelMemberByEmail,
   removeChannelMemberById,
+  changeMemberRole,
   type ChannelMember,
 } from '../api/members';
 import { type ChannelRole } from '../api/channels';
@@ -20,20 +21,24 @@ interface MembersPanelProps {
   channelId: string;
   /** Локальная роль текущего пользователя в этом канале */
   myRole: ChannelRole;
+  /** Текущая ширина панели (задаётся ресайзом в родителе) */
+  width: number;
 }
 
-export const MembersPanel = ({ channelId, myRole }: MembersPanelProps) => {
+export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) => {
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+  const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
 
   // Права по критериям задачи: добавляют владелец и модератор,
-  // исключает только владелец
+  // исключает и меняет роли только владелец
   const canAdd = myRole === 'OWNER' || myRole === 'MODERATOR';
   const canRemove = myRole === 'OWNER';
+  const canChangeRole = myRole === 'OWNER';
 
   const loadMembers = useCallback(async () => {
     try {
@@ -84,8 +89,21 @@ export const MembersPanel = ({ channelId, myRole }: MembersPanelProps) => {
     }
   };
 
+  // Переключение роли между MEMBER и MODERATOR (критерии 2 и 3)
+  const handleChangeRole = async (userId: string, role: ChannelRole) => {
+    setChangingRoleId(userId);
+    try {
+      await changeMemberRole(channelId, userId, role);
+      await loadMembers();
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError));
+    } finally {
+      setChangingRoleId(null);
+    }
+  };
+
   return (
-    <aside className="members">
+    <aside className="members" style={{ width }}>
       <div className="members__header">
         <h2 className="members__title">Участники</h2>
         <span className="members__count">{members.length}</span>
@@ -117,6 +135,28 @@ export const MembersPanel = ({ channelId, myRole }: MembersPanelProps) => {
                 onClick={() => handleRemove(member.userId)}
               >
                 ✕
+              </button>
+            )}
+            {/* Критерий 1: элементы смены роли видит только владелец;
+                критерий 4: роль OWNER не переключается */}
+            {canChangeRole && member.role !== 'OWNER' && (
+              <button
+                type="button"
+                className="button button--ghost member-row__role"
+                title={
+                  member.role === 'MEMBER' ? 'Повысить до модератора' : 'Понизить до участника'
+                }
+                aria-label={
+                  member.role === 'MEMBER'
+                    ? `Повысить ${member.fullName} до модератора`
+                    : `Понизить ${member.fullName} до участника`
+                }
+                disabled={changingRoleId === member.userId}
+                onClick={() =>
+                  handleChangeRole(member.userId, member.role === 'MEMBER' ? 'MODERATOR' : 'MEMBER')
+                }
+              >
+                {member.role === 'MEMBER' ? '↑' : '↓'}
               </button>
             )}
           </div>

@@ -317,3 +317,59 @@ export const removeChannelMember = async (
   await prisma.channelMember.delete({ where: { id: target.id } });
   return { status: 'removed' };
 };
+
+// Результат смены локальной роли участника
+export type ChangeRoleResult =
+  | { status: 'changed'; role: ChannelRole }
+  | { status: 'not_found' }
+  | { status: 'forbidden' }
+  | { status: 'target_not_found' }
+  | { status: 'owner_protected' }
+  | { status: 'role_unchanged' };
+
+// Смена локальной роли в канале строго между MEMBER и MODERATOR.
+// По критерию готовности смену выполняет только владелец, а роль
+// OWNER неизменяема и не передаётся.
+export const changeChannelMemberRole = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+  targetUserId: string,
+  newRole: ChannelRole,
+): Promise<ChangeRoleResult> => {
+  // Переключение доступно только между двумя ролями
+  if (newRole !== ChannelRole.MEMBER && newRole !== ChannelRole.MODERATOR) {
+    return { status: 'forbidden' };
+  }
+
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { members: { where: { userId: requesterId }, select: { role: true } } },
+  });
+
+  if (!channel) {
+    return { status: 'not_found' };
+  }
+  if (channel.members[0]?.role !== ChannelRole.OWNER) {
+    return { status: 'forbidden' };
+  }
+
+  const target = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: targetUserId, channelId } },
+  });
+  if (!target) {
+    return { status: 'target_not_found' };
+  }
+  if (target.role === ChannelRole.OWNER) {
+    return { status: 'owner_protected' };
+  }
+  if (target.role === newRole) {
+    return { status: 'role_unchanged' };
+  }
+
+  await prisma.channelMember.update({
+    where: { id: target.id },
+    data: { role: newRole },
+  });
+  return { status: 'changed', role: newRole };
+};
