@@ -5,6 +5,7 @@ import {
   listUserChannels,
   listChannelCatalog,
   joinChannel,
+  listChannelMembers,
 } from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
@@ -85,6 +86,23 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'joined':
         res.status(201).json({ ...result.channel, role: 'MEMBER' });
+    }
+  });
+
+  // Список участников канала: доступен только участникам канала
+  router.get('/:id/members', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const result = await listChannelMembers(prisma, channelId, req.session!.sub);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Список участников доступен только участникам канала' });
+        return;
+      case 'ok':
+        res.status(200).json(result.members);
     }
   });
 

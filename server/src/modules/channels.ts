@@ -150,3 +150,56 @@ export const joinChannel = async (
     channel: { id: channel.id, name: channel.name, type: channel.type },
   };
 };
+
+// Участник канала для панели состава
+export interface ChannelMemberInfo {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: ChannelRole;
+  joinedAt: Date;
+}
+
+// Результат запроса списка участников
+export type MemberListResult =
+  | { status: 'ok'; members: ChannelMemberInfo[] }
+  | { status: 'not_found' }
+  | { status: 'forbidden' };
+
+// Список участников канала: виден только участникам канала:
+// состав приватного канала не раскрывается посторонним.
+export const listChannelMembers = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+): Promise<MemberListResult> => {
+  const requester = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: requesterId, channelId } },
+  });
+
+  if (!requester) {
+    // Разделяем «канала нет» и «нет доступа», чтобы не раскрывать существование
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { id: true },
+    });
+    return channel ? { status: 'forbidden' } : { status: 'not_found' };
+  }
+
+  const members = await prisma.channelMember.findMany({
+    where: { channelId },
+    include: { user: { select: { fullName: true, email: true } } },
+    orderBy: { joinedAt: 'asc' },
+  });
+
+  return {
+    status: 'ok',
+    members: members.map((member) => ({
+      userId: member.userId,
+      fullName: member.user.fullName,
+      email: member.user.email,
+      role: member.role,
+      joinedAt: member.joinedAt,
+    })),
+  };
+};

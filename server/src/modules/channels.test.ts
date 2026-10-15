@@ -4,6 +4,7 @@ import {
   listUserChannels,
   listChannelCatalog,
   joinChannel,
+  listChannelMembers,
 } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
@@ -282,5 +283,94 @@ describe('Unit Test: Вступление в канал', () => {
     await expect(joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).rejects.toThrow(
       'connection lost',
     );
+  });
+});
+
+describe('Unit Test: Список участников канала', () => {
+  const CHANNEL_ID = 'ch-1';
+  const joinedAt = new Date('2026-01-01T10:00:00Z');
+
+  // Мок: участник канала и список его участников
+  const mockMembers = (members: Array<{ userId: string; role: ChannelRole }>) => ({
+    channelMember: {
+      findUnique: vi.fn().mockResolvedValue({ id: 'm-requester' }),
+      findMany: vi.fn().mockResolvedValue(
+        members.map((member) => ({
+          userId: member.userId,
+          role: member.role,
+          joinedAt,
+          user: {
+            fullName: `Сотрудник ${member.userId}`,
+            email: `${member.userId}@corp.messenger.com`,
+          },
+        })),
+      ),
+    },
+    channel: {
+      findUnique: vi.fn().mockResolvedValue({ id: CHANNEL_ID }),
+    },
+  });
+
+  it('возвращает участников с ролями для участника канала', async () => {
+    const mock = mockMembers([
+      { userId: CREATOR_ID, role: ChannelRole.OWNER },
+      { userId: 'user-2', role: ChannelRole.MEMBER },
+    ]);
+
+    const result = await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') {
+      return;
+    }
+    expect(result.members).toHaveLength(2);
+    expect(result.members[0]).toEqual({
+      userId: CREATOR_ID,
+      fullName: `Сотрудник ${CREATOR_ID}`,
+      email: `${CREATOR_ID}@corp.messenger.com`,
+      role: ChannelRole.OWNER,
+      joinedAt,
+    });
+    expect(result.members[1].role).toBe(ChannelRole.MEMBER);
+  });
+
+  it('ищет участничество по составному ключу', async () => {
+    const mock = mockMembers([{ userId: CREATOR_ID, role: ChannelRole.OWNER }]);
+
+    await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+
+    expect(mock.channelMember.findUnique).toHaveBeenCalledWith({
+      where: { userId_channelId: { userId: CREATOR_ID, channelId: CHANNEL_ID } },
+    });
+  });
+
+  it('сортирует участников по дате вступления', async () => {
+    const mock = mockMembers([{ userId: CREATOR_ID, role: ChannelRole.OWNER }]);
+
+    await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+
+    expect(mock.channelMember.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { joinedAt: 'asc' } }),
+    );
+  });
+
+  it('запрещает список постороннему при существующем канале', async () => {
+    const mock = mockMembers([]);
+    mock.channelMember.findUnique.mockResolvedValue(null);
+
+    const result = await listChannelMembers(mock as never, CHANNEL_ID, 'stranger');
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.channelMember.findMany).not.toHaveBeenCalled();
+  });
+
+  it('возвращает not_found для несуществующего канала', async () => {
+    const mock = mockMembers([]);
+    mock.channelMember.findUnique.mockResolvedValue(null);
+    mock.channel.findUnique.mockResolvedValue(null);
+
+    const result = await listChannelMembers(mock as never, CHANNEL_ID, 'stranger');
+
+    expect(result).toEqual({ status: 'not_found' });
   });
 });
