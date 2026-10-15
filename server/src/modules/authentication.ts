@@ -1,13 +1,25 @@
 import express, { type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import { validateCorporateEmail } from '../utils/validation';
-import { signAccessToken } from '../utils/token';
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/token';
+import {
+  storeRefreshToken,
+  findRefreshToken,
+  isRefreshTokenUsable,
+  revokeRefreshToken,
+} from './refresh-tokens';
 import { requireAuth } from './middleware';
 import { type PrismaClient } from '../generated/prisma/client';
 
+// Тело запроса аутентификации
 interface LoginBody {
   email?: unknown;
   password?: unknown;
+}
+
+// Тело запроса с refresh-токеном (обновление сессии и выход)
+interface RefreshBody {
+  refreshToken?: unknown;
 }
 
 // Тело запроса после проверки типов полей
@@ -25,10 +37,22 @@ const validateLoginFields = (body: LoginBody): ValidatedLoginInput | null => {
   return { email, password };
 };
 
+// Выпуск новой пары токенов и сохранение refresh-токена в БД
+const issueTokenPair = async (
+  prisma: PrismaClient,
+  userId: string,
+  role: 'USER' | 'ADMIN',
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  const accessToken = signAccessToken({ sub: userId, role });
+  const refreshToken = signRefreshToken({ sub: userId, role });
+  await storeRefreshToken(prisma, userId, refreshToken);
+  return { accessToken, refreshToken };
+};
+
 export const createAuthenticationRouter = (prisma: PrismaClient): express.Router => {
   const router = express.Router();
 
-  // Аутентификация: выдача токена сессии по паре email и пароль
+  // Аутентификация: валидная пара email и пароль даёт пару токенов
   router.post('/login', async (req: Request, res: Response): Promise<void> => {
     const input = validateLoginFields(req.body ?? {});
     if (!input || !validateCorporateEmail(input.email)) {
@@ -55,9 +79,63 @@ export const createAuthenticationRouter = (prisma: PrismaClient): express.Router
       return;
     }
 
-    // Критерий 1: валидная пара даёт подписанный токен сессии
-    const token = signAccessToken({ sub: user.id, role: user.globalRole });
-    res.status(200).json({ token });
+    // Выдаётся пара: короткоживущий access и долгоживущий refresh
+    const tokens = await issueTokenPair(prisma, user.id, user.globalRole);
+    res.status(200).json(tokens);
+  });
+
+  // Обновление сессии: ротация пары токенов
+  router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as RefreshBody;
+    if (typeof body.refreshToken !== 'string') {
+      res.status(400).json({ message: 'Требуется refresh-токен' });
+      return;
+    }
+
+    let payload;
+    try {
+      payload = verifyRefreshToken(body.refreshToken);
+    } catch {
+      res.status(401).json({ message: 'Невалидный или истёкший токен' });
+      return;
+    }
+
+    const record = await findRefreshToken(prisma, body.refreshToken);
+    if (!record || !isRefreshTokenUsable(record)) {
+      res.status(401).json({ message: 'Сессия недействительна' });
+      return;
+    }
+
+    // Роль и статус берутся из БД: данные токена могли устареть
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user || user.status === 'BLOCKED') {
+      await revokeRefreshToken(prisma, record.id);
+      res.status(401).json({ message: 'Сессия недействительна' });
+      return;
+    }
+
+    // Ротация: старый refresh отзывается, выдаётся новая пара
+    await revokeRefreshToken(prisma, record.id);
+    const tokens = await issueTokenPair(prisma, user.id, user.globalRole);
+    res.status(200).json(tokens);
+  });
+
+  // Выход из системы: отзыв refresh-токена, access перестаёт обновляться
+  router.post('/logout', async (req: Request, res: Response): Promise<void> => {
+    const body = (req.body ?? {}) as RefreshBody;
+    if (typeof body.refreshToken === 'string') {
+      try {
+        verifyRefreshToken(body.refreshToken);
+        const record = await findRefreshToken(prisma, body.refreshToken);
+        if (record && isRefreshTokenUsable(record)) {
+          await revokeRefreshToken(prisma, record.id);
+        }
+      } catch {
+        // Невалидный токен — отзывать нечего, выход всё равно успешен
+      }
+    }
+
+    res.status(200).json({ message: 'Сессия завершена' });
   });
 
   // Данные текущего пользователя: доступ только при валидном токене

@@ -87,6 +87,14 @@ describe('Unit Test: Токены сессии (JWT)', () => {
         'Некорректная полезная нагрузка токена',
       );
     });
+
+    it('refresh-токены уникальны даже при выпуске в одну секунду', () => {
+      vi.stubEnv('JWT_SECRET', SECRET);
+      const first = signRefreshToken(payload);
+      const second = signRefreshToken(payload);
+
+      expect(first).not.toBe(second);
+    });
   });
 
   describe('Окружение', () => {

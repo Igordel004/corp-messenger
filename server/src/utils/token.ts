@@ -1,4 +1,5 @@
 import jwt, { type SignOptions } from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { GlobalRole } from '../generated/prisma/enums';
 
 // Тип токена: закодирован в нагрузке, проверяется при верификации.
@@ -28,9 +29,20 @@ const getJwtSecret = (): string => {
 export const ACCESS_TOKEN_TTL = '15m';
 export const REFRESH_TOKEN_TTL = '7d';
 
-// Создание подписанного токена указанного вида
-const signToken = (payload: TokenPayload, ttl: SignOptions['expiresIn']): string => {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: ttl });
+// Создание подписанного токена указанного вида.
+// jwtid добавляет уникальный идентификатор jti в нагрузку: без него
+// токены с одинаковыми данными, выпущенные в одну секунду, совпадают
+// байт в байт, и ротация refresh-токенов становится невозможна.
+const signToken = (
+  payload: TokenPayload,
+  ttl: SignOptions['expiresIn'],
+  jwtid?: string,
+): string => {
+  const options: SignOptions = { expiresIn: ttl };
+  if (jwtid !== undefined) {
+    options.jwtid = jwtid;
+  }
+  return jwt.sign(payload, getJwtSecret(), options);
 };
 
 // Короткоживущий токен доступа (15 минут)
@@ -38,9 +50,9 @@ export const signAccessToken = (payload: Omit<TokenPayload, 'type'>): string => 
   return signToken({ ...payload, type: 'access' }, ACCESS_TOKEN_TTL);
 };
 
-// Долгоживущий токен обновления (7 дней)
+// Долгоживущий токен обновления (7 дней), каждый экземпляр уникален
 export const signRefreshToken = (payload: Omit<TokenPayload, 'type'>): string => {
-  return signToken({ ...payload, type: 'refresh' }, REFRESH_TOKEN_TTL);
+  return signToken({ ...payload, type: 'refresh' }, REFRESH_TOKEN_TTL, randomUUID());
 };
 
 // Верификация токена: бросает ошибку при невалидной подписи,
