@@ -6,6 +6,11 @@ import { getApiErrorMessage } from '../api/client';
 import { CreateChannelModal } from './CreateChannelModal';
 import { ChannelList } from './ChannelList';
 
+// Контекст роутера: активный канал доступен дочерним экранам
+export interface LayoutOutletContext {
+  activeChannel: UserChannel | null;
+}
+
 // Каркас приложения: шапка, боковая панель каналов и основная область
 export const AppLayout = () => {
   const { user, logout } = useAuth();
@@ -76,6 +81,9 @@ export const AppLayout = () => {
     setActiveChannelId(channel.id);
   };
 
+  // Активный канал передаётся экранам через контекст роутера
+  const activeChannel = channels.find((channel) => channel.id === activeChannelId) ?? null;
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -138,7 +146,7 @@ export const AppLayout = () => {
         </aside>
 
         <main className="app-main">
-          <Outlet />
+          <Outlet context={{ activeChannel }} />
         </main>
       </div>
 
