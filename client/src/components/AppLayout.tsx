@@ -12,14 +12,25 @@ export const AppLayout = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const isProfileOpen = pathname === '/profile';
+  const isCatalogOpen = pathname === '/catalog';
 
   const [channels, setChannels] = useState<UserChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  const [channelsVersion, setChannelsVersion] = useState(0);
 
-  // Загрузка каналов пользователя при монтировании каркаса
+  // Сигнал обновления списка: каталог и создание канала сообщают панели,
+  // что состав каналов пользователя изменился
+  useEffect(() => {
+    const handleRefresh = () => setChannelsVersion((version) => version + 1);
+    window.addEventListener('channels-refresh', handleRefresh);
+    return () => window.removeEventListener('channels-refresh', handleRefresh);
+  }, []);
+
+  // Загрузка каналов при монтировании каркаса, при смене экрана
+  // и по сигналу обновления из других компонентов
   useEffect(() => {
     let isCancelled = false;
 
@@ -45,7 +56,7 @@ export const AppLayout = () => {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [pathname, channelsVersion]);
 
   // Выход: удаление сессии и перенаправление на страницу входа
   const handleLogout = () => {
@@ -98,6 +109,12 @@ export const AppLayout = () => {
         <aside className="sidebar">
           <div className="sidebar__header">
             <h2 className="sidebar__title">Каналы</h2>
+            <Link
+              to="/catalog"
+              className={`sidebar__link${isCatalogOpen ? ' sidebar__link--active' : ''}`}
+            >
+              Каталог
+            </Link>
             <button
               type="button"
               className="button button--ghost"

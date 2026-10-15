@@ -38,7 +38,7 @@ export const ChatPage = () => (
   <section className="chat">
     <header className="chat__header">
       <span className="channel-item__avatar" aria-hidden="true">
-        #
+        О
       </span>
       <div className="chat__header-body">
         <h1 className="chat__title">Общий</h1>

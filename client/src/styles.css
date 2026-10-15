@@ -104,10 +104,11 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Бейджи ролей и статусов */
+/* Бейджи ролей и статусов: обводка повторяет цвет текста (currentColor) */
 .badge {
   display: inline-block;
   padding: 2px 6px;
+  border: 1px solid currentColor;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
@@ -443,6 +444,34 @@ a:hover {
   color: var(--text-muted);
 }
 
+/* Ссылка на каталог каналов в шапке панели: компактный чип
+   с рамкой, чтобы в обычном состоянии не выглядела голым текстом */
+.sidebar__link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sidebar__link:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+
+.sidebar__link--active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+
 .sidebar__search {
   padding: 0 12px 8px;
 }
@@ -490,6 +519,13 @@ a:hover {
 .channel-item--active .channel-item__name {
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/* В выделенном канале аватар становится белым: иначе он сливается
+   с голубым фоном активного элемента */
+.channel-item--active .channel-item__avatar {
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .channel-item__avatar {

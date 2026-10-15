@@ -68,7 +68,7 @@ export const ChannelList = ({
           onClick={() => onSelect(channel.id)}
         >
           <span className="channel-item__avatar" aria-hidden="true">
-            #
+            {channel.name.trim().charAt(0).toUpperCase()}
           </span>
           <span className="channel-item__body">
             <span className="channel-item__row">

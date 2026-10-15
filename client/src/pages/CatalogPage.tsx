@@ -18,7 +18,7 @@ interface CatalogCardProps {
 const CatalogCard = ({ channel, onJoin, isJoining }: CatalogCardProps) => (
   <div className="catalog-card">
     <span className="channel-item__avatar" aria-hidden="true">
-      #
+      {channel.name.trim().charAt(0).toUpperCase()}
     </span>
     <div className="catalog-card__body">
       <div className="catalog-card__row">
@@ -97,6 +97,8 @@ export const CatalogPage = () => {
           channel.id === channelId ? { ...channel, isMember: true } : channel,
         ),
       );
+      // Боковая панель перезагружает свой список каналов
+      window.dispatchEvent(new CustomEvent('channels-refresh'));
     } catch (error) {
       setLoadError(getApiErrorMessage(error));
     } finally {
