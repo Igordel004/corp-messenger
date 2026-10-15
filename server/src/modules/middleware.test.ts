@@ -3,7 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { requireAuth } from './middleware';
-import { signSessionToken } from '../utils/token';
+import { signAccessToken } from '../utils/token';
 
 // Секрет подписи токенов для тестового окружения
 process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
@@ -23,7 +23,7 @@ describe('Unit Test: Middleware проверки токена сессии', () 
   });
 
   it('пропускает запрос с валидным токеном и прикрепляет payload', async () => {
-    const token = signSessionToken({ sub: 'user-uuid-1', role: 'USER' });
+    const token = signAccessToken({ sub: 'user-uuid-1', role: 'USER' });
     const response = await request(createTestApp())
       .get('/protected')
       .set('Authorization', `Bearer ${token}`);
@@ -32,6 +32,7 @@ describe('Unit Test: Middleware проверки токена сессии', () 
     expect(response.body.session).toEqual({
       sub: 'user-uuid-1',
       role: 'USER',
+      type: 'access',
     });
   });
 
@@ -43,7 +44,7 @@ describe('Unit Test: Middleware проверки токена сессии', () 
   });
 
   it('возвращает 401 при заголовке без схемы Bearer', async () => {
-    const token = signSessionToken({ sub: 'user-uuid-1', role: 'USER' });
+    const token = signAccessToken({ sub: 'user-uuid-1', role: 'USER' });
     const response = await request(createTestApp()).get('/protected').set('Authorization', token);
 
     expect(response.status).toBe(401);

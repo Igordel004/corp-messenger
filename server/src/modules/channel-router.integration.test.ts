@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
 import { prisma, disconnectDatabase } from '../db';
-import { signSessionToken } from '../utils/token';
+import { signAccessToken } from '../utils/token';
 
 // Уникальный префикс тестовых данных для изоляции прогонов
 const RUN_ID = Date.now();
@@ -29,7 +29,7 @@ const createTestUser = async (): Promise<void> => {
 };
 
 // Получение валидного токена сессии тестового пользователя
-const authToken = (): string => signSessionToken({ sub: USER_ID, role: 'USER' });
+const authToken = (): string => signAccessToken({ sub: USER_ID, role: 'USER' });
 
 describe('Integration Test: POST /api/channels (реальная БД)', () => {
   beforeAll(async () => {
