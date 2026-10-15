@@ -801,14 +801,30 @@ a:hover {
   text-overflow: ellipsis;
 }
 
-/* Кнопка исключения: призрачная, но с красным оттенком */
+/* Кнопка исключения: призрачная, но с красным оттенком.
+   Прозрачная рамка в покое сохраняет размер при наведении */
 .member-row__remove {
   color: var(--status-danger);
+  border: 1px solid transparent;
   flex-shrink: 0;
 }
 
 .member-row__remove:hover:not(:disabled) {
   background: var(--status-danger-bg);
+  border-color: var(--status-danger);
+}
+
+/* Кнопка смены роли: компактная иконка в стиле крестика,
+   синим оттенком для отличия от красного удаления */
+.member-row__role {
+  color: var(--color-primary);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.member-row__role:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 /* Форма добавления участника */

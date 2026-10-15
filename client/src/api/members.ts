@@ -39,3 +39,16 @@ export const addChannelMemberByEmail = async (
 export const removeChannelMemberById = async (channelId: string, userId: string): Promise<void> => {
   await apiClient.delete(`/channels/${channelId}/members/${userId}`);
 };
+
+// Смена локальной роли между MEMBER и MODERATOR (право только OWNER)
+export const changeMemberRole = async (
+  channelId: string,
+  userId: string,
+  role: ChannelRole,
+): Promise<{ userId: string; role: ChannelRole }> => {
+  const response = await apiClient.patch<{ userId: string; role: ChannelRole }>(
+    `/channels/${channelId}/members/${userId}/role`,
+    { role },
+  );
+  return response.data;
+};
