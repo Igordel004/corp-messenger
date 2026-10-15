@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ChatPage } from './pages/ChatPage';
 import { HomePage } from './pages/HomePage';
+import { CatalogPage } from './pages/CatalogPage';
 import './styles.css';
 
 // Карта маршрутов приложения: публичные экраны входа и регистрации,
@@ -26,6 +27,7 @@ const App = () => (
       >
         <Route path="/" element={<ChatPage />} />
         <Route path="/profile" element={<HomePage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -195,3 +195,226 @@ describe('Integration Test: GET /api/channels (реальная БД)', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('Integration Test: GET /api/channels/catalog (реальная БД)', () => {
+  // Второй пользователь: владелец приватного канала
+  const OTHER_ID = `other-${RUN_ID}`;
+
+  const createSecondUser = async (): Promise<void> => {
+    await prisma.user.create({
+      data: {
+        id: OTHER_ID,
+        fullName: 'Второй Пользователь',
+        email: `second-${RUN_ID}@corp.messenger.com`,
+        passwordHash: 'test-hash',
+        globalRole: 'USER',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+  const cleanupCatalog = async (): Promise<void> => {
+    await prisma.channel.deleteMany({
+      where: { name: { startsWith: 'catalog-' } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: [USER_ID, OTHER_ID] } } });
+  };
+
+  beforeAll(async () => {
+    await cleanupCatalog();
+    await createTestUser();
+    await createSecondUser();
+  });
+
+  afterAll(async () => {
+    await cleanupCatalog();
+    await disconnectDatabase();
+  });
+
+  it('показывает публичный канал всем, а приватный — только участнику', async () => {
+    // Публичный канал создаёт второй пользователь
+    const publicChannel = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${signAccessToken({ sub: OTHER_ID, role: 'USER' })}`)
+      .send({ name: `catalog-public-${RUN_ID}`, type: 'PUBLIC' });
+
+    // Приватный канал — тоже второй пользователь, текущий в него не входит
+    const privateChannel = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${signAccessToken({ sub: OTHER_ID, role: 'USER' })}`)
+      .send({ name: `catalog-private-${RUN_ID}`, type: 'PRIVATE' });
+
+    const response = await request(app)
+      .get('/api/channels/catalog')
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(200);
+
+    const names = response.body.map((channel: { name: string }) => channel.name);
+    // Критерий 1: публичный виден как не-участник
+    expect(names).toContain(`catalog-public-${RUN_ID}`);
+    // Критерий 1: чужой приватный канал скрыт
+    expect(names).not.toContain(`catalog-private-${RUN_ID}`);
+
+    const publicEntry = response.body.find(
+      (channel: { name: string }) => channel.name === `catalog-public-${RUN_ID}`,
+    );
+    expect(publicEntry.isMember).toBe(false);
+    expect(publicEntry.type).toBe('PUBLIC');
+    // Идентификаторы созданных каналов нужны следующим тестам
+    expect(publicChannel.status).toBe(201);
+    expect(privateChannel.status).toBe(201);
+  });
+
+  it('отмечает канал пользователя как участник', async () => {
+    // Текущий пользователь создаёт приватный канал — он же его владелец
+    await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `catalog-own-${RUN_ID}`, type: 'PRIVATE' });
+
+    const response = await request(app)
+      .get('/api/channels/catalog')
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    const own = response.body.find(
+      (channel: { name: string }) => channel.name === `catalog-own-${RUN_ID}`,
+    );
+    // Критерий 1: собственный приватный канал виден и помечен
+    expect(own).toMatchObject({ type: 'PRIVATE', isMember: true });
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app).get('/api/channels/catalog');
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('Integration Test: POST /api/channels/:id/join (реальная БД)', () => {
+  // Второй пользователь — владелец каналов для вступления
+  const OTHER_ID = `joiner-${RUN_ID}`;
+
+  const createSecondUser = async (): Promise<void> => {
+    await prisma.user.create({
+      data: {
+        id: OTHER_ID,
+        fullName: 'Второй Пользователь',
+        email: `join-second-${RUN_ID}@corp.messenger.com`,
+        passwordHash: 'test-hash',
+        globalRole: 'USER',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+  const otherAuth = (): string => signAccessToken({ sub: OTHER_ID, role: 'USER' });
+
+  const cleanupJoin = async (): Promise<void> => {
+    await prisma.channel.deleteMany({
+      where: { name: { startsWith: 'join-' } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: [USER_ID, OTHER_ID] } } });
+  };
+
+  beforeAll(async () => {
+    await cleanupJoin();
+    await createTestUser();
+    await createSecondUser();
+  });
+
+  afterAll(async () => {
+    await cleanupJoin();
+    await disconnectDatabase();
+  });
+
+  // Создание канала вторым пользователем и возврат его идентификатора
+  const createOtherChannel = async (name: string, type: string): Promise<string> => {
+    const response = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${otherAuth()}`)
+      .send({ name, type });
+    return response.body.id as string;
+  };
+
+  it('вступление в публичный канал добавляет участника с ролью MEMBER', async () => {
+    const channelId = await createOtherChannel(`join-public-${RUN_ID}`, 'PUBLIC');
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/join`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    // Критерий 3: вступивший получает локальную роль MEMBER
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      id: channelId,
+      name: `join-public-${RUN_ID}`,
+      type: 'PUBLIC',
+      role: 'MEMBER',
+    });
+
+    const member = await prisma.channelMember.findFirst({
+      where: { channelId, userId: USER_ID },
+    });
+    expect(member?.role).toBe('MEMBER');
+
+    // Критерий 1: канал виден в каталоге как участнический
+    const catalog = await request(app)
+      .get('/api/channels/catalog')
+      .set('Authorization', `Bearer ${authToken()}`);
+    const entry = catalog.body.find((channel: { id: string }) => channel.id === channelId);
+    expect(entry.isMember).toBe(true);
+  });
+
+  it('повторное вступление отклоняется с кодом 409', async () => {
+    const channelId = await createOtherChannel(`join-repeat-${RUN_ID}`, 'PUBLIC');
+
+    await request(app)
+      .post(`/api/channels/${channelId}/join`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    const repeat = await request(app)
+      .post(`/api/channels/${channelId}/join`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(repeat.status).toBe(409);
+
+    // Запись участника не продублирована
+    const count = await prisma.channelMember.count({
+      where: { channelId, userId: USER_ID },
+    });
+    expect(count).toBe(1);
+  });
+
+  it('вступление в чужой приватный канал отклоняется с кодом 400', async () => {
+    const channelId = await createOtherChannel(`join-private-${RUN_ID}`, 'PRIVATE');
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/join`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('публичный');
+
+    const count = await prisma.channelMember.count({
+      where: { channelId, userId: USER_ID },
+    });
+    expect(count).toBe(0);
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .post('/api/channels/00000000-0000-4000-8000-000000000000/join')
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('не найден');
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const channelId = await createOtherChannel(`join-anon-${RUN_ID}`, 'PUBLIC');
+
+    const response = await request(app).post(`/api/channels/${channelId}/join`);
+
+    expect(response.status).toBe(401);
+  });
+});
