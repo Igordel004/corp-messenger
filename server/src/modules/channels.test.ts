@@ -6,6 +6,7 @@ import {
   joinChannel,
   listChannelMembers,
   addChannelMember,
+  removeChannelMember,
 } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
@@ -500,6 +501,108 @@ describe('Unit Test: Добавление участника в канал', () 
 
     await expect(
       addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email),
+    ).rejects.toThrow('connection lost');
+  });
+});
+
+describe('Unit Test: Исключение участника из канала', () => {
+  const CHANNEL_ID = 'ch-1';
+  const TARGET_ID = 'user-2';
+
+  // Мок с ролью запросившего и записью исключаемого участника
+  const mockRemove = (requesterRole: ChannelRole | null, targetRole: ChannelRole | null) => ({
+    channel: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: CHANNEL_ID,
+        members: requesterRole ? [{ role: requesterRole }] : [],
+      }),
+    },
+    channelMember: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(targetRole ? { id: 'm-target', role: targetRole } : null),
+      delete: vi.fn().mockResolvedValue({}),
+    },
+  });
+
+  it('владелец исключает участника, запись удаляется из БД', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+
+    // Критерий 4: запись участника удаляется
+    expect(result).toEqual({ status: 'removed' });
+    expect(mock.channelMember.delete).toHaveBeenCalledWith({
+      where: { id: 'm-target' },
+    });
+  });
+
+  it('владелец может исключить модератора', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MODERATOR);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+
+    expect(result).toEqual({ status: 'removed' });
+  });
+
+  it('модератор не может исключать (403)', async () => {
+    const mock = mockRemove(ChannelRole.MODERATOR, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'moderator', TARGET_ID);
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.channelMember.delete).not.toHaveBeenCalled();
+  });
+
+  it('рядовой участник не может исключать (403)', async () => {
+    const mock = mockRemove(ChannelRole.MEMBER, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'member', TARGET_ID);
+
+    expect(result).toEqual({ status: 'forbidden' });
+  });
+
+  it('посторонний не может исключать (403)', async () => {
+    const mock = mockRemove(null, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'stranger', TARGET_ID);
+
+    expect(result).toEqual({ status: 'forbidden' });
+  });
+
+  it('возвращает not_found для несуществующего канала', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
+    mock.channel.findUnique.mockResolvedValue(null);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+
+    expect(result).toEqual({ status: 'not_found' });
+  });
+
+  it('возвращает target_not_found для не-участника', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, null);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+
+    expect(result).toEqual({ status: 'target_not_found' });
+    expect(mock.channelMember.delete).not.toHaveBeenCalled();
+  });
+
+  it('владелец защищён от исключения', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, CREATOR_ID);
+
+    expect(result).toEqual({ status: 'owner_protected' });
+    expect(mock.channelMember.delete).not.toHaveBeenCalled();
+  });
+
+  it('пробрасывает непредвиденную ошибку базы данных', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
+    mock.channelMember.delete.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID),
     ).rejects.toThrow('connection lost');
   });
 });

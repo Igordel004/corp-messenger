@@ -7,6 +7,7 @@ import {
   joinChannel,
   listChannelMembers,
   addChannelMember,
+  removeChannelMember,
 } from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
@@ -136,6 +137,29 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'added':
         res.status(201).json(result.member);
+    }
+  });
+
+  // Исключение участника: право есть только у OWNER
+  router.delete('/:id/members/:userId', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId, userId } = req.params as { id: string; userId: string };
+    const result = await removeChannelMember(prisma, channelId, req.session!.sub, userId);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Исключать участников может только владелец' });
+        return;
+      case 'target_not_found':
+        res.status(404).json({ message: 'Участник не найден в этом канале' });
+        return;
+      case 'owner_protected':
+        res.status(400).json({ message: 'Владелец канала не может быть исключён' });
+        return;
+      case 'removed':
+        res.status(200).json({ message: 'Участник исключён из канала' });
     }
   });
 

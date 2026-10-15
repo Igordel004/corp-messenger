@@ -715,3 +715,155 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
     expect(response.status).toBe(401);
   });
 });
+
+describe('Integration Test: DELETE /api/channels/:id/members/:userId (реальная БД)', () => {
+  // Участник, которого исключают, и модератор для проверки прав
+  const MEMBER_ID = `victim-${RUN_ID}`;
+  const MODERATOR_ID = `moder-${RUN_ID}`;
+
+  const createSupportUsers = async (): Promise<void> => {
+    await prisma.user.createMany({
+      data: [
+        {
+          id: MEMBER_ID,
+          fullName: 'Исключаемый Участник',
+          email: `victim-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+        {
+          id: MODERATOR_ID,
+          fullName: 'Модератор Канала',
+          email: `moder-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+  };
+
+  const cleanupRemove = async (): Promise<void> => {
+    await prisma.channel.deleteMany({ where: { name: { startsWith: 'remove-' } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [USER_ID, MEMBER_ID, MODERATOR_ID] } },
+    });
+  };
+
+  // Канал текущего пользователя с добавленным участником заданной роли
+  const createChannelWithMember = async (
+    memberRole: 'MEMBER' | 'MODERATOR',
+    memberUserId: string,
+  ): Promise<string> => {
+    const created = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `remove-${memberRole.toLowerCase()}-${RUN_ID}`, type: 'PRIVATE' });
+    const channelId = created.body.id as string;
+
+    await prisma.channelMember.create({
+      data: { channelId, userId: memberUserId, role: memberRole },
+    });
+    return channelId;
+  };
+
+  beforeAll(async () => {
+    await cleanupRemove();
+    await createTestUser();
+    await createSupportUsers();
+  });
+
+  afterAll(async () => {
+    await cleanupRemove();
+    await disconnectDatabase();
+  });
+
+  it('владелец исключает участника: запись удалена, доступ потерян', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    // Критерий 3: действие владельца проходит
+    expect(response.status).toBe(200);
+
+    // Критерий 4: запись удалена из БД
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: MEMBER_ID, channelId } },
+    });
+    expect(record).toBeNull();
+
+    // Критерий 4: исключённый теряет доступ к списку участников
+    const victimToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
+    const lost = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${victimToken}`);
+    expect(lost.status).toBe(403);
+
+    // Исключённый больше не виден в списке
+    const members = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`);
+    const ids = members.body.map((member: { userId: string }) => member.userId);
+    expect(ids).not.toContain(MEMBER_ID);
+  });
+
+  it('модератор не может исключать участников (403)', async () => {
+    const channelId = await createChannelWithMember('MODERATOR', MODERATOR_ID);
+    await prisma.channelMember.create({
+      data: { channelId, userId: MEMBER_ID, role: 'MEMBER' },
+    });
+
+    const moderatorToken = signAccessToken({ sub: MODERATOR_ID, role: 'USER' });
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
+      .set('Authorization', `Bearer ${moderatorToken}`);
+
+    // Критерий 3: только владелец исключает
+    expect(response.status).toBe(403);
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: MEMBER_ID, channelId } },
+    });
+    expect(record).not.toBeNull();
+  });
+
+  it('владелец не может исключить самого себя (400)', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${USER_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Владелец');
+  });
+
+  it('исключение не-участника возвращает 404', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${MODERATOR_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .delete(`/api/channels/00000000-0000-4000-8000-000000000000/members/${MEMBER_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app).delete(
+      `/api/channels/00000000-0000-4000-8000-000000000000/members/${MEMBER_ID}`,
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
