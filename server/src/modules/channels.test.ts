@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createChannelWithOwner, listUserChannels } from './channels';
+import { createChannelWithOwner, listUserChannels, listChannelCatalog } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
 // Идентификатор тестового создателя
@@ -131,5 +131,70 @@ describe('Unit Test: Список каналов пользователя', () =
     const result = await listUserChannels(prisma as never, CREATOR_ID);
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('Unit Test: Каталог каналов', () => {
+  // Канал с отметкой об участии пользователя (или без неё)
+  const channel = (id: string, name: string, type: ChannelType, memberIds: string[]) => ({
+    id,
+    name,
+    type,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    members: memberIds.map((userId) => ({ id: `m-${userId}` })),
+  });
+
+  it('включает все публичные каналы независимо от участия', async () => {
+    const findMany = vi
+      .fn()
+      .mockResolvedValue([
+        channel('ch-1', 'Общий', ChannelType.PUBLIC, []),
+        channel('ch-2', 'Разработка', ChannelType.PUBLIC, [CREATOR_ID]),
+      ]);
+    const prisma = { channel: { findMany } };
+
+    const result = await listChannelCatalog(prisma as never, CREATOR_ID);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ id: 'ch-1', isMember: false });
+    expect(result[1]).toMatchObject({ id: 'ch-2', isMember: true });
+  });
+
+  it('скрывает приватные каналы без участия пользователя', async () => {
+    const findMany = vi
+      .fn()
+      .mockResolvedValue([
+        channel('ch-1', 'Секретный', ChannelType.PRIVATE, []),
+        channel('ch-2', 'Финансы', ChannelType.PRIVATE, [CREATOR_ID]),
+      ]);
+    const prisma = { channel: { findMany } };
+
+    const result = await listChannelCatalog(prisma as never, CREATOR_ID);
+
+    // Приватный канал чужого пользователя не виден
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ id: 'ch-2', isMember: true });
+  });
+
+  it('передаёт фильтр участника в запрос к базе', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = { channel: { findMany } };
+
+    await listChannelCatalog(prisma as never, CREATOR_ID);
+
+    expect(findMany).toHaveBeenCalledWith({
+      include: {
+        members: { where: { userId: CREATOR_ID }, select: { id: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  });
+
+  it('возвращает пустой каталог при отсутствии каналов', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = { channel: { findMany } };
+
+    expect(await listChannelCatalog(prisma as never, CREATOR_ID)).toEqual([]);
   });
 });

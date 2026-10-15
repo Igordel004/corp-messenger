@@ -68,3 +68,35 @@ export const listUserChannels = async (
     joinedAt: membership.joinedAt,
   }));
 };
+
+// Строка каталога: канал с признаком участия текущего пользователя
+export interface CatalogChannel {
+  id: string;
+  name: string;
+  type: ChannelType;
+  isMember: boolean;
+}
+
+// Каталог каналов: все публичные и приватные, где пользователь состоит.
+// Приватные каналы без участия пользователя в каталог не попадают —
+// их существование для посторонних скрыто.
+export const listChannelCatalog = async (
+  prisma: PrismaClient,
+  userId: string,
+): Promise<CatalogChannel[]> => {
+  const channels = await prisma.channel.findMany({
+    include: {
+      members: { where: { userId }, select: { id: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return channels
+    .filter((channel) => channel.type === 'PUBLIC' || channel.members.length > 0)
+    .map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      isMember: channel.members.length > 0,
+    }));
+};
