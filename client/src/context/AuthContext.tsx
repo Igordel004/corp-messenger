@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { loginEmployee, fetchCurrentUser, type RegisteredUser } from '../api/auth';
-import { getAuthToken, setAuthToken, clearAuthToken } from '../api/token';
+import { loginEmployee, logoutSession, fetchCurrentUser, type RegisteredUser } from '../api/auth';
+import { getAccessToken, getRefreshToken, setTokenPair, clearTokens } from '../api/token';
 
 // Состояние аутентификации приложения
 interface AuthContextValue {
@@ -21,36 +21,41 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Провайдер сессии: восстановление токена при загрузке и управление выходом
+// Провайдер сессии: восстановление пары токенов и управление выходом
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<RegisteredUser | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);
 
-  // Восстановление сессии из localStorage при первой загрузке приложения
+  // Восстановление сессии при первой загрузке приложения.
+  // Если access истёк, интерцептор сам обновит пару и повторит запрос.
   useEffect(() => {
-    const token = getAuthToken();
-    if (!token) {
+    if (!getAccessToken()) {
       setIsRestoring(false);
       return;
     }
 
     fetchCurrentUser()
       .then(setUser)
-      .catch(() => clearAuthToken())
+      .catch(() => clearTokens())
       .finally(() => setIsRestoring(false));
   }, []);
 
-  // Аутентификация: получение токена и загрузка данных пользователя
+  // Аутентификация: сохранение пары токенов и загрузка пользователя
   const login = useCallback(async (email: string, password: string) => {
-    const { token } = await loginEmployee({ email, password });
-    setAuthToken(token);
+    const pair = await loginEmployee({ email, password });
+    setTokenPair(pair);
     const currentUser = await fetchCurrentUser();
     setUser(currentUser);
   }, []);
 
-  // Выход: удаление токена и сброс состояния
+  // Выход: сервер отзывает refresh-токен, локальная пара удаляется
   const logout = useCallback(() => {
-    clearAuthToken();
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      // Отзыв выполняется в фоне: выход не должен зависеть от сети
+      logoutSession(refreshToken).catch(() => undefined);
+    }
+    clearTokens();
     setUser(null);
   }, []);
 

@@ -54,7 +54,6 @@
 
   /* Геометрия */
   --layout-header-height: 56px;
-  --sidebar-width: 280px;
 }
 
 /* Базовый сброс */
@@ -104,10 +103,11 @@ a:hover {
   text-decoration: underline;
 }
 
-/* Бейджи ролей и статусов */
+/* Бейджи ролей и статусов: обводка повторяет цвет текста (currentColor) */
 .badge {
   display: inline-block;
   padding: 2px 6px;
+  border: 1px solid currentColor;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
@@ -383,6 +383,20 @@ a:hover {
   flex-direction: column;
   align-items: flex-end;
   line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.app-header__identity:hover {
+  background: var(--bg-surface-hover);
+}
+
+/* Подсветка, когда открыт сам профиль */
+.app-header__identity--active {
+  background: var(--color-primary-light);
 }
 
 .app-header__name {
@@ -403,11 +417,10 @@ a:hover {
   min-height: 0;
 }
 
-/* Боковая панель каналов */
+/* Боковая панель каналов (ширина задаётся ресайзом инлайном) */
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: var(--sidebar-width);
   border-right: 1px solid var(--border-light);
   background: var(--bg-surface);
   flex-shrink: 0;
@@ -427,6 +440,34 @@ a:hover {
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* Ссылка на каталог каналов в шапке панели: компактный чип
+   с рамкой, чтобы в обычном состоянии не выглядела голым текстом */
+.sidebar__link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sidebar__link:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--color-primary);
+  text-decoration: none;
+}
+
+.sidebar__link--active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  text-decoration: none;
 }
 
 .sidebar__search {
@@ -476,6 +517,13 @@ a:hover {
 .channel-item--active .channel-item__name {
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/* В выделенном канале аватар становится белым: иначе он сливается
+   с голубым фоном активного элемента */
+.channel-item--active .channel-item__avatar {
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .channel-item__avatar {
@@ -563,12 +611,19 @@ a:hover {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
+  /* Длинное название обрезается многоточием, не растягивая шапку */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat__subtitle {
   margin: 0;
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Лента сообщений */
@@ -636,6 +691,168 @@ a:hover {
 
 .chat__composer .input {
   flex: 1;
+}
+
+/* ===================== Панель участников ===================== */
+
+/* Область чата: лента слева, участники справа */
+.chat-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Разделитель панелей: зажимается мышью для смены ширины.
+   Ширина 6px + курсор кол-resize дают удобную зону захвата */
+.resize-handle {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--color-primary-light);
+}
+
+.chat-area > .chat {
+  flex: 1;
+  min-width: 0;
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.members__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.members__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.members__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.members__error {
+  margin: 8px 12px 0;
+}
+
+.members__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* Строка участника */
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.member-row:hover {
+  background: var(--bg-surface-hover);
+}
+
+.member-row__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-row__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.member-row__name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-row__email {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Кнопка исключения: призрачная, но с красным оттенком.
+   Прозрачная рамка в покое сохраняет размер при наведении */
+.member-row__remove {
+  color: var(--status-danger);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.member-row__remove:hover:not(:disabled) {
+  background: var(--status-danger-bg);
+  border-color: var(--status-danger);
+}
+
+/* Кнопка смены роли: компактная иконка в стиле крестика,
+   синим оттенком для отличия от красного удаления */
+.member-row__role {
+  color: var(--color-primary);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.member-row__role:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+/* Форма добавления участника */
+.members__add {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border-light);
 }
 
 /* Заглушка пустого состояния чата */
@@ -777,7 +994,7 @@ a:hover {
   color: var(--text-main);
 }
 
-/* Медиа-запрос для узких экранов: панель скрывается только на мобильных */
+/* Медиа-запрос для узких экранов: панели скрываются только на мобильных */
 @media (max-width: 560px) {
   .sidebar {
     display: none;
@@ -786,6 +1003,95 @@ a:hover {
   .app-header__identity {
     display: none;
   }
+
+  .members {
+    display: none;
+  }
+
+  .resize-handle {
+    display: none;
+  }
+}
+
+/* ===================== Каталог каналов ===================== */
+
+.catalog {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.catalog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.catalog__title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+.catalog__search {
+  max-width: 280px;
+  height: 38px;
+}
+
+.catalog__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Карточка канала в каталоге */
+.catalog-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+
+.catalog-card__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog-card__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.catalog-card__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalog-card__join {
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.catalog-card__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 /* ===================== Модальное окно ===================== */

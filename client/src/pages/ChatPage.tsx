@@ -1,6 +1,11 @@
 // Заглушка окна чата: пузыри сообщений для демонстрации стиля.
 // Реальный обмен сообщениями появится в Этапе 4 (WebSocket).
 
+import { useOutletContext } from 'react-router';
+import { type LayoutOutletContext } from '../components/AppLayout';
+import { MembersPanel } from '../components/MembersPanel';
+import { usePanelResize } from '../hooks/usePanelResize';
+
 interface DemoMessage {
   id: string;
   author: string;
@@ -33,46 +38,101 @@ const DEMO_MESSAGES: DemoMessage[] = [
   },
 ];
 
-// Окно чата-заглушка
-export const ChatPage = () => (
-  <section className="chat">
-    <header className="chat__header">
-      <span className="channel-item__avatar" aria-hidden="true">
-        #
-      </span>
-      <div className="chat__header-body">
-        <h1 className="chat__title">Общий</h1>
-        <p className="chat__subtitle">Демонстрация ленты сообщений</p>
-      </div>
-    </header>
+// Подпись типа приватности в шапке чата
+const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
+  PUBLIC: 'Публичный канал',
+  PRIVATE: 'Приватный канал',
+};
 
-    <div className="chat__messages">
-      {DEMO_MESSAGES.map((message) => (
-        <div
-          key={message.id}
-          className={`bubble ${message.outgoing ? 'bubble--outgoing' : 'bubble--incoming'}`}
-        >
-          {!message.outgoing && <span className="bubble__author">{message.author}</span>}
-          <div>{message.text}</div>
-          <div className="bubble__meta">
-            {message.outgoing && <span>Прочитано · </span>}
-            <span>{message.time}</span>
-          </div>
+// Окно чата-заглушка с панелью участников активного канала
+export const ChatPage = () => {
+  const { activeChannel } = useOutletContext<LayoutOutletContext>();
+
+  // Ресайз правой панели участников зажатием границы.
+  // Панель закреплена у правого края, поэтому направление инвертировано
+  const { width: membersWidth, handleMouseDown: onMembersResizeStart } = usePanelResize(
+    280,
+    220,
+    420,
+    { invert: true },
+  );
+
+  // Канал не выбран: панель участников показывать некому
+  if (!activeChannel) {
+    return (
+      <div className="chat__placeholder">
+        <div className="chat__placeholder-icon" aria-hidden="true">
+          #
         </div>
-      ))}
-    </div>
+        <p className="chat__placeholder-title">Выберите канал</p>
+        <p className="chat__placeholder-text">
+          Выберите канал в списке слева, создайте новый или присоединитесь через каталог.
+        </p>
+      </div>
+    );
+  }
 
-    <div className="chat__composer">
-      <input
-        className="input"
-        type="text"
-        placeholder="Сообщения будут доступны в Этапе 4"
-        aria-label="Текст сообщения"
-        disabled
+  return (
+    <div className="chat-area">
+      <section className="chat">
+        <header className="chat__header">
+          <span className="channel-item__avatar" aria-hidden="true">
+            {activeChannel.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <div className="chat__header-body">
+            <h1 className="chat__title">{activeChannel.name}</h1>
+            <p className="chat__subtitle">
+              {TYPE_LABELS[activeChannel.type]} · демонстрация ленты сообщений
+            </p>
+          </div>
+        </header>
+
+        <div className="chat__messages">
+          {DEMO_MESSAGES.map((message) => (
+            <div
+              key={message.id}
+              className={`bubble ${message.outgoing ? 'bubble--outgoing' : 'bubble--incoming'}`}
+            >
+              {!message.outgoing && <span className="bubble__author">{message.author}</span>}
+              <div>{message.text}</div>
+              <div className="bubble__meta">
+                {message.outgoing && <span>Прочитано · </span>}
+                <span>{message.time}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="chat__composer">
+          <input
+            className="input"
+            type="text"
+            placeholder="Сообщения будут доступны в Этапе 4"
+            aria-label="Текст сообщения"
+            disabled
+          />
+          <button type="button" className="button" disabled>
+            Отправить
+          </button>
+        </div>
+      </section>
+
+      {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
+      <div
+        className="resize-handle resize-handle--left"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Изменить ширину панели участников"
+        onMouseDown={onMembersResizeStart}
       />
-      <button type="button" className="button" disabled>
-        Отправить
-      </button>
+
+      {/* key сбрасывает состояние панели при переключении канала */}
+      <MembersPanel
+        key={activeChannel.id}
+        channelId={activeChannel.id}
+        myRole={activeChannel.role}
+        width={membersWidth}
+      />
     </div>
-  </section>
-);
+  );
+};
