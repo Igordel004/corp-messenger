@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { fetchUserChannels, type UserChannel } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
+import { usePanelResize } from '../hooks/usePanelResize';
 import { CreateChannelModal } from './CreateChannelModal';
 import { ChannelList } from './ChannelList';
 
@@ -25,6 +26,13 @@ export const AppLayout = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelsVersion, setChannelsVersion] = useState(0);
+
+  // Ресайз левой панели каналов зажатием границы
+  const { width: sidebarWidth, handleMouseDown: onSidebarResizeStart } = usePanelResize(
+    280,
+    220,
+    480,
+  );
 
   // Сигнал обновления списка: каталог и создание канала сообщают панели,
   // что состав каналов пользователя изменился
@@ -114,7 +122,7 @@ export const AppLayout = () => {
       </header>
 
       <div className="app-body">
-        <aside className="sidebar">
+        <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="sidebar__header">
             <h2 className="sidebar__title">Каналы</h2>
             <Link
@@ -144,6 +152,15 @@ export const AppLayout = () => {
             />
           </div>
         </aside>
+
+        {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
+        <div
+          className="resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Изменить ширину панели каналов"
+          onMouseDown={onSidebarResizeStart}
+        />
 
         <main className="app-main">
           <Outlet context={{ activeChannel }} />

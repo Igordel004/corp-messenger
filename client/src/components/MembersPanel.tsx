@@ -21,9 +21,11 @@ interface MembersPanelProps {
   channelId: string;
   /** Локальная роль текущего пользователя в этом канале */
   myRole: ChannelRole;
+  /** Текущая ширина панели (задаётся ресайзом в родителе) */
+  width: number;
 }
 
-export const MembersPanel = ({ channelId, myRole }: MembersPanelProps) => {
+export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) => {
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export const MembersPanel = ({ channelId, myRole }: MembersPanelProps) => {
   };
 
   return (
-    <aside className="members">
+    <aside className="members" style={{ width }}>
       <div className="members__header">
         <h2 className="members__title">Участники</h2>
         <span className="members__count">{members.length}</span>

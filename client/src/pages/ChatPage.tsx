@@ -4,6 +4,7 @@
 import { useOutletContext } from 'react-router';
 import { type LayoutOutletContext } from '../components/AppLayout';
 import { MembersPanel } from '../components/MembersPanel';
+import { usePanelResize } from '../hooks/usePanelResize';
 
 interface DemoMessage {
   id: string;
@@ -46,6 +47,15 @@ const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
 // Окно чата-заглушка с панелью участников активного канала
 export const ChatPage = () => {
   const { activeChannel } = useOutletContext<LayoutOutletContext>();
+
+  // Ресайз правой панели участников зажатием границы.
+  // Панель закреплена у правого края, поэтому направление инвертировано
+  const { width: membersWidth, handleMouseDown: onMembersResizeStart } = usePanelResize(
+    280,
+    220,
+    420,
+    { invert: true },
+  );
 
   // Канал не выбран: панель участников показывать некому
   if (!activeChannel) {
@@ -107,11 +117,21 @@ export const ChatPage = () => {
         </div>
       </section>
 
+      {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
+      <div
+        className="resize-handle resize-handle--left"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Изменить ширину панели участников"
+        onMouseDown={onMembersResizeStart}
+      />
+
       {/* key сбрасывает состояние панели при переключении канала */}
       <MembersPanel
         key={activeChannel.id}
         channelId={activeChannel.id}
         myRole={activeChannel.role}
+        width={membersWidth}
       />
     </div>
   );
