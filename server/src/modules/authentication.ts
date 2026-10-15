@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import { validateCorporateEmail } from '../utils/validation';
-import { signSessionToken } from '../utils/token';
+import { signAccessToken } from '../utils/token';
 import { requireAuth } from './middleware';
 import { type PrismaClient } from '../generated/prisma/client';
 
@@ -56,7 +56,7 @@ export const createAuthenticationRouter = (prisma: PrismaClient): express.Router
     }
 
     // Критерий 1: валидная пара даёт подписанный токен сессии
-    const token = signSessionToken({ sub: user.id, role: user.globalRole });
+    const token = signAccessToken({ sub: user.id, role: user.globalRole });
     res.status(200).json({ token });
   });
 

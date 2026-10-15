@@ -3,7 +3,7 @@ import request from 'supertest';
 import bcrypt from 'bcrypt';
 import { app } from '../app';
 import { prisma, disconnectDatabase } from '../db';
-import { signSessionToken } from '../utils/token';
+import { signAccessToken } from '../utils/token';
 
 // Уникальный суффикс для тестовых email, чтобы прогоны не конфликтовали
 const runId = Date.now();
@@ -109,7 +109,7 @@ describe('Integration Test: аутентификация и сессия (реа
 
   it('/me возвращает 401, если пользователь из токена удалён из БД', async () => {
     // Валидно подписанный токен, но его владелец не существует в БД
-    const orphanToken = signSessionToken({
+    const orphanToken = signAccessToken({
       sub: '00000000-0000-4000-8000-000000000000',
       role: 'USER',
     });

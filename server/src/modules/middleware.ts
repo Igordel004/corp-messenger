@@ -1,10 +1,10 @@
 import { type Request, type Response, type NextFunction } from 'express';
-import { verifySessionToken, type SessionPayload } from '../utils/token';
+import { verifyAccessToken, type TokenPayload } from '../utils/token';
 
 // Расширение типа запроса Express: payload сессии после прохождения проверки
 declare module 'express-serve-static-core' {
   interface Request {
-    session?: SessionPayload;
+    session?: TokenPayload;
   }
 }
 
@@ -21,7 +21,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
   }
 
   try {
-    req.session = verifySessionToken(header.slice(BEARER_PREFIX.length));
+    req.session = verifyAccessToken(header.slice(BEARER_PREFIX.length));
     next();
   } catch {
     res.status(401).json({ message: 'Невалидный или истёкший токен' });

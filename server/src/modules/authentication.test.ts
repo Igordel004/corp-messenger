@@ -3,7 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { createAuthenticationRouter } from './authentication';
-import { verifySessionToken } from '../utils/token';
+import { verifyAccessToken } from '../utils/token';
 import { type PrismaClient } from '../generated/prisma/client';
 
 // Секрет подписи токенов для тестового окружения
@@ -53,7 +53,7 @@ describe('Unit Test: Модуль аутентификации (выдача т�
     expect(typeof response.body.token).toBe('string');
 
     // Токен верифицируется и содержит идентификатор и роль пользователя
-    const payload = verifySessionToken(response.body.token);
+    const payload = verifyAccessToken(response.body.token);
     expect(payload.sub).toBe(activeUser.id);
     expect(payload.role).toBe('USER');
   });
