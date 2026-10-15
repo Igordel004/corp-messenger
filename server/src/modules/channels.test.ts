@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createChannelWithOwner, listUserChannels, listChannelCatalog } from './channels';
+import {
+  createChannelWithOwner,
+  listUserChannels,
+  listChannelCatalog,
+  joinChannel,
+} from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
 // Идентификатор тестового создателя
@@ -196,5 +201,86 @@ describe('Unit Test: Каталог каналов', () => {
     const prisma = { channel: { findMany } };
 
     expect(await listChannelCatalog(prisma as never, CREATOR_ID)).toEqual([]);
+  });
+});
+
+describe('Unit Test: Вступление в канал', () => {
+  const CHANNEL_ID = 'ch-1';
+
+  // Мок канала с заданным типом и составом участников
+  const mockChannel = (type: ChannelType, memberIds: string[] = []) => ({
+    channel: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: CHANNEL_ID,
+        name: 'Общий',
+        type,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        members: memberIds.map((id) => ({ id: `m-${id}` })),
+      }),
+    },
+    channelMember: {
+      create: vi.fn().mockResolvedValue({}),
+    },
+  });
+
+  it('добавляет участника с ролью MEMBER в публичный канал', async () => {
+    const mock = mockChannel(ChannelType.PUBLIC);
+
+    const result = await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID);
+
+    expect(result).toEqual({
+      status: 'joined',
+      channel: { id: CHANNEL_ID, name: 'Общий', type: ChannelType.PUBLIC },
+    });
+    expect(mock.channelMember.create).toHaveBeenCalledWith({
+      data: { channelId: CHANNEL_ID, userId: CREATOR_ID, role: ChannelRole.MEMBER },
+    });
+  });
+
+  it('возвращает not_found для несуществующего канала', async () => {
+    const mock = mockChannel(ChannelType.PUBLIC);
+    mock.channel.findUnique.mockResolvedValue(null);
+
+    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+      status: 'not_found',
+    });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('возвращает already_member для действующего участника', async () => {
+    const mock = mockChannel(ChannelType.PUBLIC, [CREATOR_ID]);
+
+    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+      status: 'already_member',
+    });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('запрещает вступление в приватный канал', async () => {
+    const mock = mockChannel(ChannelType.PRIVATE);
+
+    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+      status: 'private',
+    });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('обрабатывает гонку параллельных вступлений как already_member', async () => {
+    const mock = mockChannel(ChannelType.PUBLIC);
+    mock.channelMember.create.mockRejectedValue({ code: 'P2002' });
+
+    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+      status: 'already_member',
+    });
+  });
+
+  it('пробрасывает непредвиденную ошибку базы данных', async () => {
+    const mock = mockChannel(ChannelType.PUBLIC);
+    mock.channelMember.create.mockRejectedValue(new Error('connection lost'));
+
+    await expect(joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).rejects.toThrow(
+      'connection lost',
+    );
   });
 });

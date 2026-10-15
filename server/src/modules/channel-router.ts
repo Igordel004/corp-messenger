@@ -1,6 +1,11 @@
 import express, { type Request, type Response } from 'express';
 import { requireAuth } from './middleware';
-import { createChannelWithOwner, listUserChannels, listChannelCatalog } from './channels';
+import {
+  createChannelWithOwner,
+  listUserChannels,
+  listChannelCatalog,
+  joinChannel,
+} from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
 
@@ -61,6 +66,26 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
   router.get('/catalog', requireAuth, async (req: Request, res: Response) => {
     const channels = await listChannelCatalog(prisma, req.session!.sub);
     res.status(200).json(channels);
+  });
+
+  // Вступление в открытый канал с ролью MEMBER
+  router.post('/:id/join', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const result = await joinChannel(prisma, channelId, req.session!.sub);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'private':
+        res.status(400).json({ message: 'Вступить можно только в публичный канал' });
+        return;
+      case 'already_member':
+        res.status(409).json({ message: 'Вы уже являетесь участником канала' });
+        return;
+      case 'joined':
+        res.status(201).json({ ...result.channel, role: 'MEMBER' });
+    }
   });
 
   return router;

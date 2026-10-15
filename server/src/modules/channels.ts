@@ -100,3 +100,53 @@ export const listChannelCatalog = async (
       isMember: channel.members.length > 0,
     }));
 };
+
+// Результат попытки вступить в канал
+export type JoinChannelResult =
+  | { status: 'joined'; channel: { id: string; name: string; type: ChannelType } }
+  | { status: 'not_found' }
+  | { status: 'private' }
+  | { status: 'already_member' };
+
+// Вступление в публичный канал: участник получает роль MEMBER.
+// Приватные каналы недоступны — по критерию готовности вступление
+// возможно только в открытый канал.
+export const joinChannel = async (
+  prisma: PrismaClient,
+  channelId: string,
+  userId: string,
+): Promise<JoinChannelResult> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { members: { where: { userId }, select: { id: true } } },
+  });
+
+  if (!channel) {
+    return { status: 'not_found' };
+  }
+  if (channel.members.length > 0) {
+    return { status: 'already_member' };
+  }
+  if (channel.type === 'PRIVATE') {
+    return { status: 'private' };
+  }
+
+  try {
+    await prisma.channelMember.create({
+      data: { channelId, userId, role: ChannelRole.MEMBER },
+    });
+  } catch (error) {
+    // Гонка параллельных вступлений: уникальный индекс (user, channel)
+    // превращает повтор в отказ «уже участник»
+    const code = (error as { code?: string }).code;
+    if (code === 'P2002') {
+      return { status: 'already_member' };
+    }
+    throw error;
+  }
+
+  return {
+    status: 'joined',
+    channel: { id: channel.id, name: channel.name, type: channel.type },
+  };
+};
