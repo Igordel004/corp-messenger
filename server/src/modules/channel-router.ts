@@ -5,6 +5,9 @@ import {
   listUserChannels,
   listChannelCatalog,
   joinChannel,
+  listChannelMembers,
+  addChannelMember,
+  removeChannelMember,
 } from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
@@ -85,6 +88,78 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'joined':
         res.status(201).json({ ...result.channel, role: 'MEMBER' });
+    }
+  });
+
+  // Список участников канала: доступен только участникам канала
+  router.get('/:id/members', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const result = await listChannelMembers(prisma, channelId, req.session!.sub);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Список участников доступен только участникам канала' });
+        return;
+      case 'ok':
+        res.status(200).json(result.members);
+    }
+  });
+
+  // Добавление участника по email: право есть у OWNER и MODERATOR
+  router.post('/:id/members', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const body = (req.body ?? {}) as { email?: unknown };
+
+    if (typeof body.email !== 'string') {
+      res.status(400).json({ message: 'Требуется email сотрудника' });
+      return;
+    }
+
+    const result = await addChannelMember(prisma, channelId, req.session!.sub, body.email);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'user_not_found':
+        res.status(404).json({ message: 'Сотрудник с таким email не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({
+          message: 'Добавлять участников может только владелец или модератор',
+        });
+        return;
+      case 'already_member':
+        res.status(409).json({ message: 'Пользователь уже является участником канала' });
+        return;
+      case 'added':
+        res.status(201).json(result.member);
+    }
+  });
+
+  // Исключение участника: право есть только у OWNER
+  router.delete('/:id/members/:userId', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId, userId } = req.params as { id: string; userId: string };
+    const result = await removeChannelMember(prisma, channelId, req.session!.sub, userId);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Исключать участников может только владелец' });
+        return;
+      case 'target_not_found':
+        res.status(404).json({ message: 'Участник не найден в этом канале' });
+        return;
+      case 'owner_protected':
+        res.status(400).json({ message: 'Владелец канала не может быть исключён' });
+        return;
+      case 'removed':
+        res.status(200).json({ message: 'Участник исключён из канала' });
     }
   });
 

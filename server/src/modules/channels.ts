@@ -150,3 +150,170 @@ export const joinChannel = async (
     channel: { id: channel.id, name: channel.name, type: channel.type },
   };
 };
+
+// Участник канала для панели состава
+export interface ChannelMemberInfo {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: ChannelRole;
+  joinedAt: Date;
+}
+
+// Результат запроса списка участников
+export type MemberListResult =
+  | { status: 'ok'; members: ChannelMemberInfo[] }
+  | { status: 'not_found' }
+  | { status: 'forbidden' };
+
+// Список участников канала: виден только участникам канала:
+// состав приватного канала не раскрывается посторонним.
+export const listChannelMembers = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+): Promise<MemberListResult> => {
+  const requester = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: requesterId, channelId } },
+  });
+
+  if (!requester) {
+    // Разделяем «канала нет» и «нет доступа», чтобы не раскрывать существование
+    const channel = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { id: true },
+    });
+    return channel ? { status: 'forbidden' } : { status: 'not_found' };
+  }
+
+  const members = await prisma.channelMember.findMany({
+    where: { channelId },
+    include: { user: { select: { fullName: true, email: true } } },
+    orderBy: { joinedAt: 'asc' },
+  });
+
+  return {
+    status: 'ok',
+    members: members.map((member) => ({
+      userId: member.userId,
+      fullName: member.user.fullName,
+      email: member.user.email,
+      role: member.role,
+      joinedAt: member.joinedAt,
+    })),
+  };
+};
+
+// Результат добавления участника
+export type AddMemberResult =
+  | {
+      status: 'added';
+      member: { userId: string; fullName: string; email: string; role: ChannelRole };
+    }
+  | { status: 'not_found' }
+  | { status: 'user_not_found' }
+  | { status: 'forbidden' }
+  | { status: 'already_member' };
+
+// Добавление участника в канал по email сотрудника.
+// По критерию готовности право добавлять есть у владельца и модератора;
+// новый участник получает роль MEMBER.
+export const addChannelMember = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+  inviteeEmail: string,
+): Promise<AddMemberResult> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { members: { where: { userId: requesterId }, select: { role: true } } },
+  });
+
+  if (!channel) {
+    return { status: 'not_found' };
+  }
+
+  const requesterRole = channel.members[0]?.role;
+  if (requesterRole !== ChannelRole.OWNER && requesterRole !== ChannelRole.MODERATOR) {
+    return { status: 'forbidden' };
+  }
+
+  const invitee = await prisma.user.findUnique({ where: { email: inviteeEmail } });
+  if (!invitee) {
+    return { status: 'user_not_found' };
+  }
+
+  const existing = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: invitee.id, channelId } },
+  });
+  if (existing) {
+    return { status: 'already_member' };
+  }
+
+  try {
+    await prisma.channelMember.create({
+      data: { channelId, userId: invitee.id, role: ChannelRole.MEMBER },
+    });
+  } catch (error) {
+    // Гонка параллельных добавлений: уникальный индекс превращает повтор в отказ
+    const code = (error as { code?: string }).code;
+    if (code === 'P2002') {
+      return { status: 'already_member' };
+    }
+    throw error;
+  }
+
+  return {
+    status: 'added',
+    member: {
+      userId: invitee.id,
+      fullName: invitee.fullName,
+      email: invitee.email,
+      role: ChannelRole.MEMBER,
+    },
+  };
+};
+
+// Результат исключения участника
+export type RemoveMemberResult =
+  | { status: 'removed' }
+  | { status: 'not_found' }
+  | { status: 'forbidden' }
+  | { status: 'target_not_found' }
+  | { status: 'owner_protected' };
+
+// Исключение участника из канала. По критерию готовности действие
+// доступно только владельцу; владелец исключить себя не может —
+// канал не должен остаться без OWNER. Запись удаляется из БД,
+// участник теряет доступ к каналу.
+export const removeChannelMember = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+  targetUserId: string,
+): Promise<RemoveMemberResult> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { members: { where: { userId: requesterId }, select: { role: true } } },
+  });
+
+  if (!channel) {
+    return { status: 'not_found' };
+  }
+  if (channel.members[0]?.role !== ChannelRole.OWNER) {
+    return { status: 'forbidden' };
+  }
+
+  const target = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: targetUserId, channelId } },
+  });
+  if (!target) {
+    return { status: 'target_not_found' };
+  }
+  if (target.role === ChannelRole.OWNER) {
+    return { status: 'owner_protected' };
+  }
+
+  await prisma.channelMember.delete({ where: { id: target.id } });
+  return { status: 'removed' };
+};
