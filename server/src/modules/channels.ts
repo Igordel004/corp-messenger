@@ -203,3 +203,73 @@ export const listChannelMembers = async (
     })),
   };
 };
+
+// Результат добавления участника
+export type AddMemberResult =
+  | {
+      status: 'added';
+      member: { userId: string; fullName: string; email: string; role: ChannelRole };
+    }
+  | { status: 'not_found' }
+  | { status: 'user_not_found' }
+  | { status: 'forbidden' }
+  | { status: 'already_member' };
+
+// Добавление участника в канал по email сотрудника.
+// По критерию готовности право добавлять есть у владельца и модератора;
+// новый участник получает роль MEMBER.
+export const addChannelMember = async (
+  prisma: PrismaClient,
+  channelId: string,
+  requesterId: string,
+  inviteeEmail: string,
+): Promise<AddMemberResult> => {
+  const channel = await prisma.channel.findUnique({
+    where: { id: channelId },
+    include: { members: { where: { userId: requesterId }, select: { role: true } } },
+  });
+
+  if (!channel) {
+    return { status: 'not_found' };
+  }
+
+  const requesterRole = channel.members[0]?.role;
+  if (requesterRole !== ChannelRole.OWNER && requesterRole !== ChannelRole.MODERATOR) {
+    return { status: 'forbidden' };
+  }
+
+  const invitee = await prisma.user.findUnique({ where: { email: inviteeEmail } });
+  if (!invitee) {
+    return { status: 'user_not_found' };
+  }
+
+  const existing = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: invitee.id, channelId } },
+  });
+  if (existing) {
+    return { status: 'already_member' };
+  }
+
+  try {
+    await prisma.channelMember.create({
+      data: { channelId, userId: invitee.id, role: ChannelRole.MEMBER },
+    });
+  } catch (error) {
+    // Гонка параллельных добавлений: уникальный индекс превращает повтор в отказ
+    const code = (error as { code?: string }).code;
+    if (code === 'P2002') {
+      return { status: 'already_member' };
+    }
+    throw error;
+  }
+
+  return {
+    status: 'added',
+    member: {
+      userId: invitee.id,
+      fullName: invitee.fullName,
+      email: invitee.email,
+      role: ChannelRole.MEMBER,
+    },
+  };
+};

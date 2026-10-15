@@ -5,6 +5,7 @@ import {
   listChannelCatalog,
   joinChannel,
   listChannelMembers,
+  addChannelMember,
 } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
@@ -372,5 +373,133 @@ describe('Unit Test: Список участников канала', () => {
     const result = await listChannelMembers(mock as never, CHANNEL_ID, 'stranger');
 
     expect(result).toEqual({ status: 'not_found' });
+  });
+});
+
+describe('Unit Test: Добавление участника в канал', () => {
+  const CHANNEL_ID = 'ch-1';
+  const INVITEE_ID = 'user-2';
+
+  const invitee = {
+    id: INVITEE_ID,
+    fullName: 'Приглашённый Сотрудник',
+    email: 'invitee@corp.messenger.com',
+  };
+
+  // Мок с ролью запросившего в канале
+  const mockAdd = (requesterRole: ChannelRole | null) => {
+    const mock = {
+      channel: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: CHANNEL_ID,
+          members: requesterRole ? [{ role: requesterRole }] : [],
+        }),
+      },
+      user: {
+        findUnique: vi.fn().mockResolvedValue(invitee),
+      },
+      channelMember: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({}),
+      },
+    };
+    return mock;
+  };
+
+  it('владелец добавляет участника с ролью MEMBER', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result).toEqual({
+      status: 'added',
+      member: {
+        userId: INVITEE_ID,
+        fullName: invitee.fullName,
+        email: invitee.email,
+        role: ChannelRole.MEMBER,
+      },
+    });
+    expect(mock.channelMember.create).toHaveBeenCalledWith({
+      data: { channelId: CHANNEL_ID, userId: INVITEE_ID, role: ChannelRole.MEMBER },
+    });
+  });
+
+  it('модератор тоже может добавлять участников', async () => {
+    const mock = mockAdd(ChannelRole.MODERATOR);
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result.status).toBe('added');
+  });
+
+  it('обычный участник не может добавлять (403)', async () => {
+    const mock = mockAdd(ChannelRole.MEMBER);
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('посторонний не может добавлять (403)', async () => {
+    const mock = mockAdd(null);
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, 'stranger', invitee.email);
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('возвращает not_found для несуществующего канала', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+    mock.channel.findUnique.mockResolvedValue(null);
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result).toEqual({ status: 'not_found' });
+  });
+
+  it('возвращает user_not_found для неизвестного email', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+    mock.user.findUnique.mockResolvedValue(null);
+
+    const result = await addChannelMember(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      'ghost@corp.messenger.com',
+    );
+
+    expect(result).toEqual({ status: 'user_not_found' });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('возвращает already_member для действующего участника', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+    mock.channelMember.findUnique.mockResolvedValue({ id: 'm-existing' });
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result).toEqual({ status: 'already_member' });
+    expect(mock.channelMember.create).not.toHaveBeenCalled();
+  });
+
+  it('обрабатывает гонку параллельных добавлений как already_member', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+    mock.channelMember.create.mockRejectedValue({ code: 'P2002' });
+
+    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+
+    expect(result).toEqual({ status: 'already_member' });
+  });
+
+  it('пробрасывает непредвиденную ошибку базы данных', async () => {
+    const mock = mockAdd(ChannelRole.OWNER);
+    mock.channelMember.create.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email),
+    ).rejects.toThrow('connection lost');
   });
 });

@@ -519,3 +519,199 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
     expect(response.status).toBe(401);
   });
 });
+
+describe('Integration Test: POST /api/channels/:id/members (реальная БД)', () => {
+  // Приглашаемый сотрудник и рядовой участник канала
+  const INVITEE_ID = `invitee-${RUN_ID}`;
+  const MEMBER_ID = `plain-${RUN_ID}`;
+
+  const createSupportUsers = async (): Promise<void> => {
+    await prisma.user.createMany({
+      data: [
+        {
+          id: INVITEE_ID,
+          fullName: 'Приглашённый Сотрудник',
+          email: `invitee-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+        {
+          id: MEMBER_ID,
+          fullName: 'Рядовой Участник',
+          email: `plain-${RUN_ID}@corp.messenger.com`,
+          passwordHash: 'test-hash',
+          globalRole: 'USER',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+  };
+
+  const cleanupAdd = async (): Promise<void> => {
+    await prisma.channel.deleteMany({ where: { name: { startsWith: 'add-' } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [USER_ID, INVITEE_ID, MEMBER_ID] } },
+    });
+  };
+
+  // Канал текущего пользователя (OWNER) для сценариев добавления
+  const createOwnChannel = async (type = 'PRIVATE'): Promise<string> => {
+    const response = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `add-${type.toLowerCase()}-${RUN_ID}`, type });
+    return response.body.id as string;
+  };
+
+  beforeAll(async () => {
+    await cleanupAdd();
+    await createTestUser();
+    await createSupportUsers();
+  });
+
+  afterAll(async () => {
+    await cleanupAdd();
+    await disconnectDatabase();
+  });
+
+  it('владелец добавляет сотрудника по email с ролью MEMBER', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    // Критерий 2: владелец добавляет участника
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      userId: INVITEE_ID,
+      fullName: 'Приглашённый Сотрудник',
+      email: `invitee-${RUN_ID}@corp.messenger.com`,
+      role: 'MEMBER',
+    });
+
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: INVITEE_ID, channelId } },
+    });
+    expect(record?.role).toBe('MEMBER');
+
+    // Критерий 1: новый участник появляется в списке
+    const members = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`);
+    expect(members.body).toHaveLength(2);
+  });
+
+  it('модератор может добавлять участников', async () => {
+    const channelId = await createOwnChannel();
+
+    // Рядовой участник добавляется и повышается до модератора
+    await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `plain-${RUN_ID}@corp.messenger.com` });
+    await prisma.channelMember.update({
+      where: { userId_channelId: { userId: MEMBER_ID, channelId } },
+      data: { role: 'MODERATOR' },
+    });
+
+    // Модератор добавляет другого сотрудника
+    const moderatorToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${moderatorToken}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    expect(response.status).toBe(201);
+  });
+
+  it('рядовой участник не может добавлять (403)', async () => {
+    const channelId = await createOwnChannel();
+
+    // Добавляем рядового участника, он пытается пригласить другого
+    await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `plain-${RUN_ID}@corp.messenger.com` });
+
+    const plainToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${plainToken}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toContain('владелец или модератор');
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .post('/api/channels/00000000-0000-4000-8000-000000000000/members')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('Канал не найден');
+  });
+
+  it('неизвестный email возвращает 404', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `ghost-${RUN_ID}@corp.messenger.com` });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('не найден');
+  });
+
+  it('повторное добавление возвращает 409', async () => {
+    const channelId = await createOwnChannel();
+
+    await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    const repeat = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
+
+    expect(repeat.status).toBe(409);
+  });
+
+  it('отклоняет запрос без email с кодом 400', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('email');
+  });
+
+  it('отклоняет запрос вообще без тела с кодом 400', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('email');
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app)
+      .post('/api/channels/00000000-0000-4000-8000-000000000000/members')
+      .send({ email: 'someone@corp.messenger.com' });
+
+    expect(response.status).toBe(401);
+  });
+});

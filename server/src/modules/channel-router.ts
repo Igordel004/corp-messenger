@@ -6,6 +6,7 @@ import {
   listChannelCatalog,
   joinChannel,
   listChannelMembers,
+  addChannelMember,
 } from './channels';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
@@ -103,6 +104,38 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'ok':
         res.status(200).json(result.members);
+    }
+  });
+
+  // Добавление участника по email: право есть у OWNER и MODERATOR
+  router.post('/:id/members', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const body = (req.body ?? {}) as { email?: unknown };
+
+    if (typeof body.email !== 'string') {
+      res.status(400).json({ message: 'Требуется email сотрудника' });
+      return;
+    }
+
+    const result = await addChannelMember(prisma, channelId, req.session!.sub, body.email);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'user_not_found':
+        res.status(404).json({ message: 'Сотрудник с таким email не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({
+          message: 'Добавлять участников может только владелец или модератор',
+        });
+        return;
+      case 'already_member':
+        res.status(409).json({ message: 'Пользователь уже является участником канала' });
+        return;
+      case 'added':
+        res.status(201).json(result.member);
     }
   });
 
