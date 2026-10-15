@@ -8,7 +8,9 @@ import {
   listChannelMembers,
   addChannelMember,
   removeChannelMember,
+  changeChannelMemberRole,
 } from './channels';
+import { ChannelRole } from '../generated/prisma/enums';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
 
@@ -160,6 +162,45 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'removed':
         res.status(200).json({ message: 'Участник исключён из канала' });
+    }
+  });
+
+  // Смена локальной роли между MEMBER и MODERATOR: только владелец
+  router.patch('/:id/members/:userId/role', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId, userId } = req.params as { id: string; userId: string };
+    const body = (req.body ?? {}) as { role?: unknown };
+
+    if (body.role !== ChannelRole.MEMBER && body.role !== ChannelRole.MODERATOR) {
+      res.status(400).json({ message: 'Роль должна быть MEMBER или MODERATOR' });
+      return;
+    }
+
+    const result = await changeChannelMemberRole(
+      prisma,
+      channelId,
+      req.session!.sub,
+      userId,
+      body.role,
+    );
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Менять роли участников может только владелец' });
+        return;
+      case 'target_not_found':
+        res.status(404).json({ message: 'Участник не найден в этом канале' });
+        return;
+      case 'owner_protected':
+        res.status(400).json({ message: 'Роль владельца канала изменить нельзя' });
+        return;
+      case 'role_unchanged':
+        res.status(409).json({ message: 'Участник уже имеет эту роль' });
+        return;
+      case 'changed':
+        res.status(200).json({ userId, role: result.role });
     }
   });
 

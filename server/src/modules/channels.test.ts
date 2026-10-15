@@ -7,6 +7,7 @@ import {
   listChannelMembers,
   addChannelMember,
   removeChannelMember,
+  changeChannelMemberRole,
 } from './channels';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
@@ -603,6 +604,196 @@ describe('Unit Test: Исключение участника из канала',
 
     await expect(
       removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID),
+    ).rejects.toThrow('connection lost');
+  });
+});
+
+describe('Unit Test: Смена локальной роли участника', () => {
+  const CHANNEL_ID = 'ch-1';
+  const TARGET_ID = 'user-2';
+
+  // Мок: роль запросившего и текущая роль исходной цели
+  const mockRole = (requesterRole: ChannelRole | null, targetRole: ChannelRole | null) => ({
+    channel: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: CHANNEL_ID,
+        members: requesterRole ? [{ role: requesterRole }] : [],
+      }),
+    },
+    channelMember: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(targetRole ? { id: 'm-target', role: targetRole } : null),
+      update: vi.fn().mockResolvedValue({}),
+    },
+  });
+
+  it('владелец повышает MEMBER до MODERATOR', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    // Критерий 2: повышение работает
+    expect(result).toEqual({ status: 'changed', role: ChannelRole.MODERATOR });
+    expect(mock.channelMember.update).toHaveBeenCalledWith({
+      where: { id: 'm-target' },
+      data: { role: ChannelRole.MODERATOR },
+    });
+  });
+
+  it('владелец понижает MODERATOR до MEMBER', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MODERATOR);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.MEMBER,
+    );
+
+    // Критерий 3: понижение работает
+    expect(result).toEqual({ status: 'changed', role: ChannelRole.MEMBER });
+  });
+
+  it('модератор не может менять роли (403)', async () => {
+    const mock = mockRole(ChannelRole.MODERATOR, ChannelRole.MEMBER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      'moderator',
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.channelMember.update).not.toHaveBeenCalled();
+  });
+
+  it('рядовой участник не может менять роли (403)', async () => {
+    const mock = mockRole(ChannelRole.MEMBER, ChannelRole.MEMBER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      'member',
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    expect(result).toEqual({ status: 'forbidden' });
+  });
+
+  it('владелец защищён от смены роли (400)', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.OWNER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      CREATOR_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    // Критерий 4: роль OWNER неизменяема
+    expect(result).toEqual({ status: 'owner_protected' });
+    expect(mock.channelMember.update).not.toHaveBeenCalled();
+  });
+
+  it('отклоняет попытку назначить роль OWNER', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.OWNER,
+    );
+
+    // Критерий 4: переключение строго между MEMBER и MODERATOR
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.channel.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('отклоняет неизвестную роль', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      'GHOST' as ChannelRole,
+    );
+
+    expect(result).toEqual({ status: 'forbidden' });
+  });
+
+  it('возвращает not_found для несуществующего канала', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
+    mock.channel.findUnique.mockResolvedValue(null);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    expect(result).toEqual({ status: 'not_found' });
+  });
+
+  it('возвращает target_not_found для не-участника', async () => {
+    const mock = mockRole(ChannelRole.OWNER, null);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    expect(result).toEqual({ status: 'target_not_found' });
+    expect(mock.channelMember.update).not.toHaveBeenCalled();
+  });
+
+  it('отклоняет смену на ту же роль (409)', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MODERATOR);
+
+    const result = await changeChannelMemberRole(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+      ChannelRole.MODERATOR,
+    );
+
+    expect(result).toEqual({ status: 'role_unchanged' });
+    expect(mock.channelMember.update).not.toHaveBeenCalled();
+  });
+
+  it('пробрасывает непредвиденную ошибку базы данных', async () => {
+    const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
+    mock.channelMember.update.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      changeChannelMemberRole(
+        mock as never,
+        CHANNEL_ID,
+        CREATOR_ID,
+        TARGET_ID,
+        ChannelRole.MODERATOR,
+      ),
     ).rejects.toThrow('connection lost');
   });
 });
