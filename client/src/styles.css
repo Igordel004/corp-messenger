@@ -846,6 +846,19 @@ a:hover {
   border-color: var(--color-primary);
 }
 
+/* Кнопка выхода из канала: на собственной строке участника,
+   красный оттенок, как у исключения */
+.member-row__leave {
+  color: var(--status-danger);
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.member-row__leave:hover:not(:disabled) {
+  background: var(--status-danger-bg);
+  border-color: var(--status-danger);
+}
+
 /* Форма добавления участника */
 .members__add {
   display: flex;
