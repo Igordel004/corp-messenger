@@ -94,14 +94,6 @@ export const RegisterPage = () => {
             </span>
           </div>
 
-          <button
-            type="button"
-            className="button button--secondary button--block"
-            onClick={() => setSuccessUser(null)}
-          >
-            Зарегистрировать ещё одного сотрудника
-          </button>
-
           <p className="auth-card__footer">
             <Link to="/login">Вернуться ко входу</Link>
           </p>
