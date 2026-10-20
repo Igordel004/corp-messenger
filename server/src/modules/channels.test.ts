@@ -598,6 +598,57 @@ describe('Unit Test: Исключение участника из канала',
     expect(mock.channelMember.delete).not.toHaveBeenCalled();
   });
 
+  it('участник выходит из канала сам, запись удаляется', async () => {
+    const mock = mockRemove(ChannelRole.MEMBER, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, TARGET_ID, TARGET_ID);
+
+    expect(result).toEqual({ status: 'left' });
+    expect(mock.channelMember.delete).toHaveBeenCalledWith({
+      where: { id: 'm-target' },
+    });
+  });
+
+  it('модератор может выйти из канала сам', async () => {
+    const mock = mockRemove(ChannelRole.MODERATOR, ChannelRole.MODERATOR);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, TARGET_ID, TARGET_ID);
+
+    expect(result).toEqual({ status: 'left' });
+  });
+
+  it('владелец не может выйти из канала сам', async () => {
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, CREATOR_ID);
+
+    expect(result).toEqual({ status: 'owner_protected' });
+    expect(mock.channelMember.delete).not.toHaveBeenCalled();
+  });
+
+  it('посторонний не может выйти из канала', async () => {
+    const mock = mockRemove(null, ChannelRole.MEMBER);
+
+    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'stranger', 'stranger');
+
+    expect(result).toEqual({ status: 'forbidden' });
+  });
+
+  it('исключение цели с ролью OWNER другого пользователя отклоняется', async () => {
+    // Защита от гонки: у канала теоретически может появиться два владельца
+    const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
+
+    const result = await removeChannelMember(
+      mock as never,
+      CHANNEL_ID,
+      CREATOR_ID,
+      'another-owner',
+    );
+
+    expect(result).toEqual({ status: 'owner_protected' });
+    expect(mock.channelMember.delete).not.toHaveBeenCalled();
+  });
+
   it('пробрасывает непредвиденную ошибку базы данных', async () => {
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
     mock.channelMember.delete.mockRejectedValue(new Error('connection lost'));

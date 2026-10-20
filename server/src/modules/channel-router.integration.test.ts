@@ -866,6 +866,55 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
 
     expect(response.status).toBe(401);
   });
+
+  it('участник выходит из канала сам через каталог', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+    const victimToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
+
+    // Участник удаляет сам себя: userId в пути совпадает с токеном
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
+      .set('Authorization', `Bearer ${victimToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toContain('вышли');
+
+    // Запись удалена, доступ потерян
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: MEMBER_ID, channelId } },
+    });
+    expect(record).toBeNull();
+
+    const lost = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${victimToken}`);
+    expect(lost.status).toBe(403);
+
+    // Канал пропал из каталога участника
+    const catalog = await request(app)
+      .get('/api/channels/catalog')
+      .set('Authorization', `Bearer ${victimToken}`)
+      .send();
+    const ids = catalog.body.map((channel: { id: string }) => channel.id);
+    expect(ids).not.toContain(channelId);
+  });
+
+  it('владелец не может выйти из канала сам (400)', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${USER_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Владелец');
+
+    // Канал сохраняет владельца
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: USER_ID, channelId } },
+    });
+    expect(record).not.toBeNull();
+  });
 });
 
 describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реальная БД)', () => {
