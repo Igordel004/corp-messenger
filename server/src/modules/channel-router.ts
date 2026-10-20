@@ -162,6 +162,9 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'removed':
         res.status(200).json({ message: 'Участник исключён из канала' });
+        return;
+      case 'left':
+        res.status(200).json({ message: 'Вы вышли из канала' });
     }
   });
 

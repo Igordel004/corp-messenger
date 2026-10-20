@@ -277,15 +277,17 @@ export const addChannelMember = async (
 // Результат исключения участника
 export type RemoveMemberResult =
   | { status: 'removed' }
+  | { status: 'left' }
   | { status: 'not_found' }
   | { status: 'forbidden' }
   | { status: 'target_not_found' }
   | { status: 'owner_protected' };
 
-// Исключение участника из канала. По критерию готовности действие
-// доступно только владельцу; владелец исключить себя не может —
-// канал не должен остаться без OWNER. Запись удаляется из БД,
-// участник теряет доступ к каналу.
+// Исключение участника из канала.
+// Владелец исключает других участников, но не может исключить себя —
+// канал не должен остаться без OWNER. Любой участник (в том числе
+// модератор и рядовой участник) может выйти из канала сам. Запись
+// удаляется из БД, участник теряет доступ к каналу.
 export const removeChannelMember = async (
   prisma: PrismaClient,
   channelId: string,
@@ -300,7 +302,18 @@ export const removeChannelMember = async (
   if (!channel) {
     return { status: 'not_found' };
   }
-  if (channel.members[0]?.role !== ChannelRole.OWNER) {
+
+  const requesterRole = channel.members[0]?.role;
+
+  // Самовыход: любой участник выходит сам, кроме владельца
+  if (requesterId === targetUserId) {
+    if (requesterRole === ChannelRole.OWNER) {
+      return { status: 'owner_protected' };
+    }
+    if (requesterRole === undefined) {
+      return { status: 'forbidden' };
+    }
+  } else if (requesterRole !== ChannelRole.OWNER) {
     return { status: 'forbidden' };
   }
 
@@ -315,7 +328,7 @@ export const removeChannelMember = async (
   }
 
   await prisma.channelMember.delete({ where: { id: target.id } });
-  return { status: 'removed' };
+  return { status: requesterId === targetUserId ? 'left' : 'removed' };
 };
 
 // Результат смены локальной роли участника
