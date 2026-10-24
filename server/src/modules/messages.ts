@@ -110,3 +110,17 @@ export const listMessages = async (
 
   return { status: 'ok', messages: messages.map(toMessageInfo) };
 };
+
+// Идентификаторы участников канала — фильтр получателей рассылки.
+// Состав читается при каждой отправке, поэтому участник, исключённый
+// после подписки на канал, новых сообщений не получает
+export const listChannelMemberIds = async (
+  prisma: PrismaClient,
+  channelId: string,
+): Promise<string[]> => {
+  const members = await prisma.channelMember.findMany({
+    where: { channelId },
+    select: { userId: true },
+  });
+  return members.map((member) => member.userId);
+};

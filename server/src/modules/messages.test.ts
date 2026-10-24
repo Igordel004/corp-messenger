@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMessage, listMessages, MAX_MESSAGE_LENGTH } from './messages';
+import { createMessage, listMessages, listChannelMemberIds, MAX_MESSAGE_LENGTH } from './messages';
 
 // Идентификаторы тестового автора и канала
 const AUTHOR_ID = 'user-uuid-1';
@@ -28,7 +28,10 @@ const expectedMessage = {
 // Мок Prisma: по умолчанию канал существует и автор состоит в нём
 const createMockPrisma = () => {
   const channel = { findUnique: vi.fn().mockResolvedValue({ id: CHANNEL_ID }) };
-  const channelMember = { findUnique: vi.fn().mockResolvedValue({ userId: AUTHOR_ID }) };
+  const channelMember = {
+    findUnique: vi.fn().mockResolvedValue({ userId: AUTHOR_ID }),
+    findMany: vi.fn().mockResolvedValue([]),
+  };
   const message = {
     create: vi.fn().mockResolvedValue(createdRow),
     findMany: vi.fn().mockResolvedValue([createdRow]),
@@ -164,5 +167,31 @@ describe('Unit Test: Лента сообщений канала', () => {
 
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.message.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('Unit Test: Идентификаторы участников канала', () => {
+  it('возвращает идентификаторы всех участников канала', async () => {
+    const mock = createMockPrisma();
+    mock.channelMember.findMany.mockResolvedValue([
+      { userId: AUTHOR_ID },
+      { userId: 'user-uuid-2' },
+    ]);
+
+    const result = await listChannelMemberIds(mock.prisma as never, CHANNEL_ID);
+
+    expect(result).toEqual([AUTHOR_ID, 'user-uuid-2']);
+    expect(mock.channelMember.findMany).toHaveBeenCalledWith({
+      where: { channelId: CHANNEL_ID },
+      select: { userId: true },
+    });
+  });
+
+  it('возвращает пустой список для канала без участников', async () => {
+    const mock = createMockPrisma();
+
+    const result = await listChannelMemberIds(mock.prisma as never, CHANNEL_ID);
+
+    expect(result).toEqual([]);
   });
 });
