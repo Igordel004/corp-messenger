@@ -5,15 +5,15 @@ import { prisma, disconnectDatabase } from '../data-access/prisma';
 import { signAccessToken } from '../utils/token';
 
 const RUN_ID = Date.now();
-const USER_ID = `user-${RUN_ID}`;
-const OTHER_ID = `msg-${RUN_ID}`;
+const USER_ID = `feeduser-${RUN_ID}`;
+const OTHER_ID = `feedguest-${RUN_ID}`;
 
 const createTestUser = async (): Promise<void> => {
   await prisma.user.create({
     data: {
       id: USER_ID,
       fullName: 'Тестовый Создатель',
-      email: `creator-${RUN_ID}@corp.messenger.com`,
+      email: `feedcreator-${RUN_ID}@corp.messenger.com`,
       passwordHash: 'test-hash',
       globalRole: 'USER',
       status: 'ACTIVE',
@@ -26,7 +26,7 @@ const createSecondUser = async (): Promise<void> => {
     data: {
       id: OTHER_ID,
       fullName: 'Второй Участник',
-      email: `msg-second-${RUN_ID}@corp.messenger.com`,
+      email: `feedguest-${RUN_ID}@corp.messenger.com`,
       passwordHash: 'test-hash',
       globalRole: 'USER',
       status: 'ACTIVE',
