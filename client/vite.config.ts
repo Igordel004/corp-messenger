@@ -17,6 +17,11 @@ export default defineConfig(({ command }) => ({
     // Проксирование API-запросов на сервер разработки (Node.js/Express)
     proxy: {
       '/api': 'http://127.0.0.1:3000',
+      // WebSocket-подключения реального времени на тот же сервер
+      '/ws': {
+        target: 'ws://127.0.0.1:3000',
+        ws: true,
+      },
     },
   },
 }));

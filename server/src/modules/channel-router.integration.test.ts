@@ -866,6 +866,55 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
 
     expect(response.status).toBe(401);
   });
+
+  it('участник выходит из канала сам через каталог', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+    const victimToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
+
+    // Участник удаляет сам себя: userId в пути совпадает с токеном
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
+      .set('Authorization', `Bearer ${victimToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toContain('вышли');
+
+    // Запись удалена, доступ потерян
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: MEMBER_ID, channelId } },
+    });
+    expect(record).toBeNull();
+
+    const lost = await request(app)
+      .get(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${victimToken}`);
+    expect(lost.status).toBe(403);
+
+    // Канал пропал из каталога участника
+    const catalog = await request(app)
+      .get('/api/channels/catalog')
+      .set('Authorization', `Bearer ${victimToken}`)
+      .send();
+    const ids = catalog.body.map((channel: { id: string }) => channel.id);
+    expect(ids).not.toContain(channelId);
+  });
+
+  it('владелец не может выйти из канала сам (400)', async () => {
+    const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
+
+    const response = await request(app)
+      .delete(`/api/channels/${channelId}/members/${USER_ID}`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Владелец');
+
+    // Канал сохраняет владельца
+    const record = await prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId: USER_ID, channelId } },
+    });
+    expect(record).not.toBeNull();
+  });
 });
 
 describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реальная БД)', () => {
@@ -1089,6 +1138,127 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
     const response = await request(app)
       .patch(`/api/channels/00000000-0000-4000-8000-000000000000/members/${TARGET_ID}/role`)
       .send({ role: 'MODERATOR' });
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('Integration Test: GET /api/channels/:id/messages (реальная БД)', () => {
+  // Второй пользователь: проверка закрытия ленты для посторонних
+  const OTHER_ID = `msg-${RUN_ID}`;
+
+  const createSecondUser = async (): Promise<void> => {
+    await prisma.user.create({
+      data: {
+        id: OTHER_ID,
+        fullName: 'Второй Участник',
+        email: `msg-second-${RUN_ID}@corp.messenger.com`,
+        passwordHash: 'test-hash',
+        globalRole: 'USER',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+  // Сообщения удаляются каскадом вместе с каналом, отдельная очистка не нужна
+  const cleanupMessages = async (): Promise<void> => {
+    await prisma.channel.deleteMany({
+      where: { name: { startsWith: 'messages-' } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: [USER_ID, OTHER_ID] } } });
+  };
+
+  const otherAuth = (): string => signAccessToken({ sub: OTHER_ID, role: 'USER' });
+
+  // Создание канала текущим пользователем (он же OWNER и автор сообщений)
+  const createChannel = async (name: string, type = 'PUBLIC'): Promise<string> => {
+    const created = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name, type });
+    return created.body.id as string;
+  };
+
+  beforeAll(async () => {
+    await cleanupMessages();
+    await createTestUser();
+    await createSecondUser();
+  });
+
+  afterAll(async () => {
+    await cleanupMessages();
+    await disconnectDatabase();
+  });
+
+  it('возвращает сообщения в хронологическом порядке с именем автора и временем', async () => {
+    const channelId = await createChannel(`messages-feed-${RUN_ID}`);
+    const first = new Date('2026-10-24T12:40:00.000Z');
+    const second = new Date('2026-10-24T12:41:00.000Z');
+
+    // Записи создаются напрямую в БД с ручным временем для проверки порядка
+    await prisma.message.create({
+      data: { content: 'Второе сообщение', authorId: USER_ID, channelId, createdAt: second },
+    });
+    await prisma.message.create({
+      data: { content: 'Первое сообщение', authorId: USER_ID, channelId, createdAt: first },
+    });
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/messages`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    // Критерий 4: от старых к новым; критерий 3: автор, дата и время
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(2);
+    expect(response.body[0]).toMatchObject({
+      content: 'Первое сообщение',
+      authorId: USER_ID,
+      authorName: 'Тестовый Создатель',
+      createdAt: first.toISOString(),
+    });
+    expect(response.body[1]).toMatchObject({
+      content: 'Второе сообщение',
+      createdAt: second.toISOString(),
+    });
+  });
+
+  it('возвращает пустую ленту для канала без сообщений', async () => {
+    const channelId = await createChannel(`messages-empty-${RUN_ID}`);
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/messages`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it('лента недоступна постороннему пользователю (403)', async () => {
+    // Приватный канал второго пользователя: текущий пользователь не участник
+    const created = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${otherAuth()}`)
+      .send({ name: `messages-private-${RUN_ID}`, type: 'PRIVATE' });
+
+    const response = await request(app)
+      .get(`/api/channels/${created.body.id}/messages`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .get('/api/channels/00000000-0000-4000-8000-000000000000/messages')
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app).get(
+      '/api/channels/00000000-0000-4000-8000-000000000000/messages',
+    );
 
     expect(response.status).toBe(401);
   });

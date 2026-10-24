@@ -10,6 +10,7 @@ import {
   removeChannelMember,
   changeChannelMemberRole,
 } from './channels';
+import { listMessages } from './messages';
 import { ChannelRole } from '../generated/prisma/enums';
 import { ChannelType } from '../generated/prisma/enums';
 import { type PrismaClient } from '../generated/prisma/client';
@@ -162,6 +163,9 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'removed':
         res.status(200).json({ message: 'Участник исключён из канала' });
+        return;
+      case 'left':
+        res.status(200).json({ message: 'Вы вышли из канала' });
     }
   });
 
@@ -201,6 +205,24 @@ export const createChannelRouter = (prisma: PrismaClient): express.Router => {
         return;
       case 'changed':
         res.status(200).json({ userId, role: result.role });
+    }
+  });
+
+  // Лента сообщений канала: доступна только участникам.
+  // Сообщения отдаются в хронологическом порядке от старых к новым
+  router.get('/:id/messages', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const { id: channelId } = req.params as { id: string };
+    const result = await listMessages(prisma, channelId, req.session!.sub);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Лента сообщений доступна только участникам канала' });
+        return;
+      case 'ok':
+        res.status(200).json(result.messages);
     }
   });
 
