@@ -1,8 +1,10 @@
 import express from 'express';
 import { prisma } from './data-access/prisma';
+import { MessageService } from './services/message';
 import { createAuthRouter } from './modules/registration';
 import { createAuthenticationRouter } from './modules/authentication';
 import { createChannelRouter } from './modules/channel-router';
+import { createMessageRouter } from './controllers/message';
 
 export const app = express();
 app.use(express.json());
@@ -16,6 +18,9 @@ app.use('/api/auth', createAuthenticationRouter(prisma));
 
 // Маршруты каналов (требуют валидный токен сессии)
 app.use('/api/channels', createChannelRouter(prisma));
+
+// Маршруты сообщений (требуют валидный токен сессии)
+app.use('/api/channels', createMessageRouter(new MessageService(prisma)));
 
 // Системный эндпоинт проверки работоспособности сервиса
 app.get('/api/health', (req, res) => {

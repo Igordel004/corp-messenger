@@ -2,13 +2,7 @@ import { type IncomingMessage } from 'http';
 import type WebSocket from 'ws';
 import { type PrismaClient } from '../generated/prisma/client';
 import { verifyAccessToken } from '../utils/token';
-import {
-  createMessage,
-  deleteMessage,
-  listChannelMemberIds,
-  MAX_MESSAGE_LENGTH,
-  type MessageInfo,
-} from './messages';
+import { MessageService, MAX_MESSAGE_LENGTH, type MessageInfo } from '../services/message';
 
 // Код закрытия соединения при непройденной аутентификации
 export const AUTH_CLOSE_CODE = 4401;
@@ -138,6 +132,7 @@ const authenticate = (request: IncomingMessage): string | null => {
 // подписки на каналы ограничивают получаемую рассылку
 export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
   const connections = new Map<WebSocket, ConnectionState>();
+  const messageService = new MessageService(prisma);
 
   const sendFrame = (socket: WebSocket, frame: ServerFrame): void => {
     socket.send(JSON.stringify(frame));
@@ -146,7 +141,7 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
   // Рассылка кадра подписчикам канала из числа действующих участников:
   // исключённый участник не получает уведомления даже с открытой подпиской
   const broadcastToChannel = async (channelId: string, frame: ServerFrame): Promise<void> => {
-    const memberIds = new Set(await listChannelMemberIds(prisma, channelId));
+    const memberIds = new Set(await messageService.listChannelMemberIds(channelId));
 
     for (const [socket, state] of connections) {
       if (state.channels.has(channelId) && memberIds.has(state.userId)) {
@@ -186,7 +181,7 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
     state: ConnectionState,
     frame: Extract<ClientFrame, { type: 'send' }>,
   ): Promise<void> => {
-    const result = await createMessage(prisma, {
+    const result = await messageService.create({
       channelId: frame.channelId,
       authorId: state.userId,
       content: frame.content,
@@ -207,7 +202,7 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
     state: ConnectionState,
     frame: Extract<ClientFrame, { type: 'delete' }>,
   ): Promise<void> => {
-    const result = await deleteMessage(prisma, {
+    const result = await messageService.delete({
       messageId: frame.messageId,
       initiatorId: state.userId,
     });
