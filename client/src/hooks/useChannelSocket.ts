@@ -51,7 +51,7 @@ const MAX_RECONNECT_DELAY = 30000;
 // Токен сессии передаётся query-параметром: браузерный WebSocket
 // не умеет задавать заголовок Authorization при рукопожатии
 export const buildSocketUrl = (token: string): string => {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 };
 
@@ -107,6 +107,7 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
 
   useEffect(() => {
     let disposed = false;
+    let connectTimer: number | null = null;
     let reconnectTimer: number | null = null;
     let attempts = 0;
 
@@ -120,6 +121,10 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       socketRef.current = socket;
 
       socket.onopen = (): void => {
+        // События устаревших подключений не должны влиять на состояние
+        if (socketRef.current !== socket) {
+          return;
+        }
         attempts = 0;
         setIsConnected(true);
         const channel = channelRef.current;
@@ -130,6 +135,9 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       };
 
       socket.onmessage = (event): void => {
+        if (socketRef.current !== socket) {
+          return;
+        }
         const frame = parseServerFrame(event.data);
         if (frame?.type === 'message') {
           onMessageRef.current(frame.message);
@@ -143,6 +151,11 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       };
 
       socket.onclose = (event): void => {
+        // Закрытие заменённого сокета не должно затирать новое
+        // подключение и планировать лишние переподключения
+        if (socketRef.current !== socket) {
+          return;
+        }
         setIsConnected(false);
         socketRef.current = null;
         if (!disposed) {
@@ -168,10 +181,19 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       }, delay);
     };
 
-    openSocket();
+    // Подключение откладывается на тик: React.StrictMode в dev-режиме
+    // повторяет монтирование эффекта, и таймер первого запуска успевает
+    // отмениться до создания сокета — рукопожатие не обрывается
+    connectTimer = window.setTimeout(() => {
+      connectTimer = null;
+      openSocket();
+    }, 0);
 
     return () => {
       disposed = true;
+      if (connectTimer !== null) {
+        window.clearTimeout(connectTimer);
+      }
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
