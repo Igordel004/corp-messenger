@@ -73,7 +73,15 @@ const createMockPrisma = () => {
     findUnique: vi.fn().mockResolvedValue({ userId: AUTHOR_ID }),
     findMany: vi.fn().mockResolvedValue([{ userId: AUTHOR_ID }]),
   };
-  const message = { create: vi.fn().mockResolvedValue(createdRow) };
+  const message = {
+    create: vi.fn().mockResolvedValue(createdRow),
+    findUnique: vi.fn().mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: AUTHOR_ID,
+    }),
+    delete: vi.fn().mockResolvedValue(createdRow),
+  };
   return { prisma: { channel, channelMember, message }, channel, channelMember, message };
 };
 
@@ -98,6 +106,19 @@ describe('Unit Test: Разбор клиентских кадров', () => {
       channelId: 'c1',
       content: 'Привет',
     });
+  });
+
+  it('разбирает кадр удаления сообщения', () => {
+    expect(parseClientFrame('{"type":"delete","messageId":"m1"}')).toEqual({
+      type: 'delete',
+      messageId: 'm1',
+    });
+  });
+
+  it('отклоняет кадр удаления без идентификатора сообщения', () => {
+    expect(parseClientFrame('{"type":"delete"}')).toBeNull();
+    expect(parseClientFrame('{"type":"delete","messageId":""}')).toBeNull();
+    expect(parseClientFrame('{"type":"delete","messageId":42}')).toBeNull();
   });
 
   it('отклоняет некорректный JSON', () => {
@@ -343,5 +364,71 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
     // Отключившийся клиент не получает рассылку
     expect(reader.sent).toEqual([{ type: 'subscribed', channelId: CHANNEL_ID }]);
+  });
+});
+
+describe('Unit Test: Удаление сообщений через WebSocket', () => {
+  it('удаляет сообщение и рассылает кадр message.deleted подписчикам', async () => {
+    const mock = createMockPrisma();
+    mock.channelMember.findMany.mockResolvedValue([
+      { userId: AUTHOR_ID },
+      { userId: 'user-uuid-2' },
+    ]);
+    const hub = createRealtimeHub(mock.prisma as never);
+    const author = createMockSocket();
+    const reader = createMockSocket();
+    hub.handleConnection(author.socket, requestWithToken(validToken()));
+    hub.handleConnection(reader.socket, requestWithToken(validToken('user-uuid-2')));
+
+    await author.emitMessage({ type: 'subscribe', channelId: CHANNEL_ID });
+    await reader.emitMessage({ type: 'subscribe', channelId: CHANNEL_ID });
+    await author.emitMessage({ type: 'delete', messageId: 'message-uuid-1' });
+
+    expect(mock.message.delete).toHaveBeenCalledWith({ where: { id: 'message-uuid-1' } });
+
+    const deletedFrame = {
+      type: 'message.deleted',
+      channelId: CHANNEL_ID,
+      messageId: 'message-uuid-1',
+    };
+    expect(author.sent).toContainEqual(deletedFrame);
+    expect(reader.sent).toContainEqual(deletedFrame);
+  });
+
+  it('возвращает ошибку при удалении чужого сообщения', async () => {
+    const mock = createMockPrisma();
+    // Инициатор — MEMBER, автор сообщения другой пользователь
+    mock.message.findUnique.mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: 'user-uuid-2',
+    });
+    mock.channelMember.findUnique.mockResolvedValue({ role: 'MEMBER' });
+    const hub = createRealtimeHub(mock.prisma as never);
+    const client = createMockSocket();
+    hub.handleConnection(client.socket, requestWithToken(validToken()));
+
+    await client.emitMessage({ type: 'delete', messageId: 'message-uuid-1' });
+
+    expect(mock.message.delete).not.toHaveBeenCalled();
+    expect(client.sent).toEqual([
+      {
+        type: 'error',
+        message: 'Удалять сообщения может только автор, модератор или владелец',
+      },
+    ]);
+  });
+
+  it('возвращает ошибку при удалении несуществующего сообщения', async () => {
+    const mock = createMockPrisma();
+    mock.message.findUnique.mockResolvedValue(null);
+    const hub = createRealtimeHub(mock.prisma as never);
+    const client = createMockSocket();
+    hub.handleConnection(client.socket, requestWithToken(validToken()));
+
+    await client.emitMessage({ type: 'delete', messageId: 'message-uuid-1' });
+
+    expect(mock.message.delete).not.toHaveBeenCalled();
+    expect(client.sent).toEqual([{ type: 'error', message: 'Сообщение не найдено' }]);
   });
 });

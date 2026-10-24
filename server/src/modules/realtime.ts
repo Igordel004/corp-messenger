@@ -4,6 +4,7 @@ import { type PrismaClient } from '../generated/prisma/client';
 import { verifyAccessToken } from '../utils/token';
 import {
   createMessage,
+  deleteMessage,
   listChannelMemberIds,
   MAX_MESSAGE_LENGTH,
   type MessageInfo,
@@ -16,13 +17,15 @@ export const AUTH_CLOSE_CODE = 4401;
 export type ClientFrame =
   | { type: 'subscribe'; channelId: string }
   | { type: 'unsubscribe'; channelId: string }
-  | { type: 'send'; channelId: string; content: string };
+  | { type: 'send'; channelId: string; content: string }
+  | { type: 'delete'; messageId: string };
 
 // Кадры протокола реального времени: сервер → клиент
 export type ServerFrame =
   | { type: 'subscribed'; channelId: string }
   | { type: 'unsubscribed'; channelId: string }
   | { type: 'message'; message: MessageInfo }
+  | { type: 'message.deleted'; channelId: string; messageId: string }
   | { type: 'error'; message: string };
 
 // Тексты ошибок по статусам сохранения сообщения
@@ -30,6 +33,12 @@ const SEND_ERRORS: Record<'invalid' | 'not_found' | 'forbidden', string> = {
   invalid: `Сообщение не может быть пустым или длиннее ${MAX_MESSAGE_LENGTH} символов`,
   not_found: 'Канал не найден',
   forbidden: 'Отправка доступна только участникам канала',
+};
+
+// Тексты ошибок по статусам удаления сообщения
+const DELETE_ERRORS: Record<'not_found' | 'forbidden', string> = {
+  not_found: 'Сообщение не найдено',
+  forbidden: 'Удалять сообщения может только автор, модератор или владелец',
 };
 
 // Состояние подключения: пользователь и подписанные каналы
@@ -46,6 +55,35 @@ export interface RealtimeHub {
   broadcast: (message: MessageInfo) => Promise<void>;
 }
 
+// Проверка непустой строки в поле кадра
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+
+// Приведение разобранного JSON к объекту с полями кадра
+const asFrameRecord = (value: unknown): Record<string, unknown> | null => {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+};
+
+// Кадры подписки на канал и отписки от него
+const toChannelFrame = (
+  type: 'subscribe' | 'unsubscribe',
+  frame: Record<string, unknown>,
+): ClientFrame | null => {
+  return isNonEmptyString(frame.channelId) ? { type, channelId: frame.channelId } : null;
+};
+
+// Кадр отправки сообщения: обязательны канал и строковый текст
+const toSendFrame = (frame: Record<string, unknown>): ClientFrame | null => {
+  return isNonEmptyString(frame.channelId) && typeof frame.content === 'string'
+    ? { type: 'send', channelId: frame.channelId, content: frame.content }
+    : null;
+};
+
+// Кадр удаления сообщения: обязательный непустой идентификатор
+const toDeleteFrame = (frame: Record<string, unknown>): ClientFrame | null => {
+  return isNonEmptyString(frame.messageId) ? { type: 'delete', messageId: frame.messageId } : null;
+};
+
 // Разбор кадра, полученного от клиента.
 // Возвращает null для некорректного JSON, не-объектов,
 // неизвестных типов кадров и отсутствующих обязательных полей
@@ -57,24 +95,20 @@ export const parseClientFrame = (raw: string): ClientFrame | null => {
     return null;
   }
 
-  if (typeof parsed !== 'object' || parsed === null) {
-    return null;
-  }
-
-  const frame = parsed as { type?: unknown; channelId?: unknown; content?: unknown };
-  if (typeof frame.channelId !== 'string' || frame.channelId.length === 0) {
+  const frame = asFrameRecord(parsed);
+  if (frame === null) {
     return null;
   }
 
   switch (frame.type) {
     case 'subscribe':
-      return { type: 'subscribe', channelId: frame.channelId };
+      return toChannelFrame('subscribe', frame);
     case 'unsubscribe':
-      return { type: 'unsubscribe', channelId: frame.channelId };
+      return toChannelFrame('unsubscribe', frame);
     case 'send':
-      return typeof frame.content === 'string'
-        ? { type: 'send', channelId: frame.channelId, content: frame.content }
-        : null;
+      return toSendFrame(frame);
+    case 'delete':
+      return toDeleteFrame(frame);
     default:
       return null;
   }
@@ -109,17 +143,20 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
     socket.send(JSON.stringify(frame));
   };
 
-  const broadcast = async (message: MessageInfo): Promise<void> => {
-    // Состав канала читается на каждую отправку: исключённый участник
-    // перестаёт получать сообщения даже при открытой подписке
-    const memberIds = new Set(await listChannelMemberIds(prisma, message.channelId));
-    const frame: ServerFrame = { type: 'message', message };
+  // Рассылка кадра подписчикам канала из числа действующих участников:
+  // исключённый участник не получает уведомления даже с открытой подпиской
+  const broadcastToChannel = async (channelId: string, frame: ServerFrame): Promise<void> => {
+    const memberIds = new Set(await listChannelMemberIds(prisma, channelId));
 
     for (const [socket, state] of connections) {
-      if (state.channels.has(message.channelId) && memberIds.has(state.userId)) {
+      if (state.channels.has(channelId) && memberIds.has(state.userId)) {
         sendFrame(socket, frame);
       }
     }
+  };
+
+  const broadcast = async (message: MessageInfo): Promise<void> => {
+    await broadcastToChannel(message.channelId, { type: 'message', message });
   };
 
   const handleSubscribe = async (
@@ -163,6 +200,30 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
     await broadcast(result.message);
   };
 
+  // Удаление сообщения: права проверяет модуль сообщений, при успехе
+  // все подписчики канала получают кадр message.deleted
+  const handleDelete = async (
+    socket: WebSocket,
+    state: ConnectionState,
+    frame: Extract<ClientFrame, { type: 'delete' }>,
+  ): Promise<void> => {
+    const result = await deleteMessage(prisma, {
+      messageId: frame.messageId,
+      initiatorId: state.userId,
+    });
+
+    if (result.status !== 'deleted') {
+      sendFrame(socket, { type: 'error', message: DELETE_ERRORS[result.status] });
+      return;
+    }
+
+    await broadcastToChannel(result.channelId, {
+      type: 'message.deleted',
+      channelId: result.channelId,
+      messageId: result.messageId,
+    });
+  };
+
   const processFrame = async (
     socket: WebSocket,
     state: ConnectionState,
@@ -182,6 +243,11 @@ export const createRealtimeHub = (prisma: PrismaClient): RealtimeHub => {
     if (frame.type === 'unsubscribe') {
       state.channels.delete(frame.channelId);
       sendFrame(socket, { type: 'unsubscribed', channelId: frame.channelId });
+      return;
+    }
+
+    if (frame.type === 'delete') {
+      await handleDelete(socket, state, frame);
       return;
     }
 
