@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { app } from './app';
-import { prisma } from './db';
+import { prisma } from './data-access/prisma';
 import { createRealtimeHub } from './modules/realtime';
 
 export interface ServerConfig {

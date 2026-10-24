@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import { app } from '../app';
-import { prisma, disconnectDatabase } from '../db';
+import { prisma, disconnectDatabase } from '../data-access/prisma';
 import { signAccessToken } from '../utils/token';
 import { hashToken } from './refresh-tokens';
 

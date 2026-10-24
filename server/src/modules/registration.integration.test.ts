@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import { app } from '../app';
-import { prisma, disconnectDatabase } from '../db';
+import { prisma, disconnectDatabase } from '../data-access/prisma';
 
 // Уникальный суффикс для тестовых email, чтобы прогоны не конфликтовали
 const runId = Date.now();

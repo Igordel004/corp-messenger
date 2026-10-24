@@ -1,5 +1,5 @@
 import express from 'express';
-import { prisma } from './db';
+import { prisma } from './data-access/prisma';
 import { createAuthRouter } from './modules/registration';
 import { createAuthenticationRouter } from './modules/authentication';
 import { createChannelRouter } from './modules/channel-router';
