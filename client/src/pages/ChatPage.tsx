@@ -63,9 +63,15 @@ export const ChatPage = () => {
     setError(text);
   }, []);
 
+  // Удаление сообщения из ленты по подтверждению сервера
+  const handleDeletedMessage = useCallback((messageId: string) => {
+    setMessages((current) => current.filter((item) => item.id !== messageId));
+  }, []);
+
   const { sendMessage } = useChannelSocket({
     channelId,
     onMessage: handleIncomingMessage,
+    onDelete: handleDeletedMessage,
     onError: handleSocketError,
   });
 
