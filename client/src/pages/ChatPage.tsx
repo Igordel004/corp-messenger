@@ -1,13 +1,14 @@
-// Лента сообщений активного канала: история загружается по REST
-// в хронологическом порядке (от старых к новым), каждое сообщение
-// показывает имя автора, дату, время и текст.
-// Отправка сообщений и живые обновления появятся в следующей фиче.
+// Чат активного канала: история сообщений загружается по REST,
+// новые сообщения приходят в реальном времени по WebSocket.
+// Каждое сообщение показывает имя автора, дату, время и текст.
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router';
 import { type LayoutOutletContext } from '../components/AppLayout';
 import { MembersPanel } from '../components/MembersPanel';
+import { MessageComposer } from '../components/MessageComposer';
 import { usePanelResize } from '../hooks/usePanelResize';
+import { useChannelSocket } from '../hooks/useChannelSocket';
 import { fetchChannelMessages, type ChannelMessage } from '../api/messages';
 import { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -24,7 +25,7 @@ const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
 const sortChronologically = (list: ChannelMessage[]): ChannelMessage[] =>
   [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-// Окно чата: лента истории активного канала и панель участников
+// Окно чата: лента сообщений, поле ввода и панель участников
 export const ChatPage = () => {
   const { activeChannel } = useOutletContext<LayoutOutletContext>();
   const { user } = useAuth();
@@ -36,6 +37,38 @@ export const ChatPage = () => {
   // Контейнер ленты: прокрутка к последнему сообщению
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
+  const channelId = activeChannel?.id ?? null;
+
+  // Новое сообщение из WebSocket: чужие каналы игнорируются,
+  // дубликаты отбрасываются по id, порядок восстанавливается
+  // хронологической сортировкой
+  const handleIncomingMessage = useCallback(
+    (message: ChannelMessage) => {
+      if (message.channelId !== channelId) {
+        return;
+      }
+      setMessages((current) => {
+        if (current.some((item) => item.id === message.id)) {
+          return current;
+        }
+        return sortChronologically([...current, message]);
+      });
+      setError(null);
+    },
+    [channelId],
+  );
+
+  // Ошибка протокола (например, отклонённая отправка)
+  const handleSocketError = useCallback((text: string) => {
+    setError(text);
+  }, []);
+
+  const { sendMessage } = useChannelSocket({
+    channelId,
+    onMessage: handleIncomingMessage,
+    onError: handleSocketError,
+  });
+
   // Ресайз правой панели участников зажатием границы.
   // Панель закреплена у правого края, поэтому направление инвертировано
   const { width: membersWidth, handleMouseDown: onMembersResizeStart } = usePanelResize(
@@ -44,8 +77,6 @@ export const ChatPage = () => {
     420,
     { invert: true },
   );
-
-  const channelId = activeChannel?.id ?? null;
 
   // Загрузка истории при выборе канала. Флаг отмены отбрасывает
   // устаревший ответ при быстром переключении между каналами
@@ -62,7 +93,13 @@ export const ChatPage = () => {
     fetchChannelMessages(channelId)
       .then((history) => {
         if (!cancelled) {
-          setMessages(sortChronologically(history));
+          // Сообщение, пришедшее по WebSocket во время загрузки истории,
+          // не должно потеряться: история сливается с текущей лентой
+          setMessages((current) => {
+            const known = new Set(history.map((item) => item.id));
+            const received = current.filter((item) => !known.has(item.id));
+            return sortChronologically([...history, ...received]);
+          });
         }
       })
       .catch((requestError) => {
@@ -89,6 +126,19 @@ export const ChatPage = () => {
       container.scrollTop = container.scrollHeight;
     }
   }, [messages, channelId]);
+
+  // Отправка текста через WebSocket; при отсутствии соединения
+  // пользователю показывается ошибка, текст остаётся в поле
+  const handleSend = useCallback(
+    (content: string): boolean => {
+      const sent = sendMessage(content);
+      if (!sent) {
+        setError('Нет соединения с сервером. Попробуйте позже.');
+      }
+      return sent;
+    },
+    [sendMessage],
+  );
 
   // Канал не выбран: панель участников показывать некому
   if (!activeChannel) {
@@ -140,18 +190,7 @@ export const ChatPage = () => {
           ))}
         </div>
 
-        <div className="chat__composer">
-          <input
-            className="input"
-            type="text"
-            placeholder="Отправка сообщений появится позже"
-            aria-label="Текст сообщения"
-            disabled
-          />
-          <button type="button" className="button" disabled>
-            Отправить
-          </button>
-        </div>
+        <MessageComposer onSend={handleSend} />
       </section>
 
       {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
