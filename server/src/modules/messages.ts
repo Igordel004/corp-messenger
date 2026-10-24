@@ -1,4 +1,5 @@
 import { type PrismaClient } from '../generated/prisma/client';
+import { ChannelRole } from '../generated/prisma/enums';
 
 // Максимальная длина текста сообщения в символах
 export const MAX_MESSAGE_LENGTH = 2000;
@@ -123,4 +124,49 @@ export const listChannelMemberIds = async (
     select: { userId: true },
   });
   return members.map((member) => member.userId);
+};
+
+// Результат удаления сообщения.
+// deleted возвращает канал для рассылки уведомления об удалении
+export type DeleteMessageResult =
+  | { status: 'deleted'; messageId: string; channelId: string }
+  | { status: 'not_found' }
+  | { status: 'forbidden' };
+
+// Удаление сообщения с контролем прав доступа.
+// MEMBER удаляет только свои сообщения, MODERATOR и OWNER — любые
+// сообщения канала; инициатор обязан состоять в канале на момент
+// удаления, поэтому исключённый участник теряет право удалять.
+// Запись удаляется из БД физически — критерий готовности задачи.
+export const deleteMessage = async (
+  prisma: PrismaClient,
+  input: { messageId: string; initiatorId: string },
+): Promise<DeleteMessageResult> => {
+  const message = await prisma.message.findUnique({
+    where: { id: input.messageId },
+    select: { id: true, channelId: true, authorId: true },
+  });
+  if (!message) {
+    return { status: 'not_found' };
+  }
+
+  const membership = await prisma.channelMember.findUnique({
+    where: { userId_channelId: { userId: input.initiatorId, channelId: message.channelId } },
+    select: { role: true },
+  });
+  if (!membership) {
+    return { status: 'forbidden' };
+  }
+
+  // Разграничение прав: авторство или модераторская роль
+  const isAuthor = message.authorId === input.initiatorId;
+  const canModerate =
+    membership.role === ChannelRole.OWNER || membership.role === ChannelRole.MODERATOR;
+  if (!isAuthor && !canModerate) {
+    return { status: 'forbidden' };
+  }
+
+  await prisma.message.delete({ where: { id: message.id } });
+
+  return { status: 'deleted', messageId: message.id, channelId: message.channelId };
 };

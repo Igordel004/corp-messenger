@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createMessage, listMessages, listChannelMemberIds, MAX_MESSAGE_LENGTH } from './messages';
+import {
+  createMessage,
+  listMessages,
+  listChannelMemberIds,
+  deleteMessage,
+  MAX_MESSAGE_LENGTH,
+} from './messages';
+import { ChannelRole } from '../generated/prisma/enums';
 
 // Идентификаторы тестового автора и канала
 const AUTHOR_ID = 'user-uuid-1';
@@ -35,6 +42,12 @@ const createMockPrisma = () => {
   const message = {
     create: vi.fn().mockResolvedValue(createdRow),
     findMany: vi.fn().mockResolvedValue([createdRow]),
+    findUnique: vi.fn().mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: AUTHOR_ID,
+    }),
+    delete: vi.fn().mockResolvedValue(createdRow),
   };
   return { prisma: { channel, channelMember, message }, channel, channelMember, message };
 };
@@ -193,5 +206,98 @@ describe('Unit Test: Идентификаторы участников кана�
     const result = await listChannelMemberIds(mock.prisma as never, CHANNEL_ID);
 
     expect(result).toEqual([]);
+  });
+});
+
+describe('Unit Test: Удаление сообщения с контролем прав', () => {
+  const deleteInput = { messageId: 'message-uuid-1', initiatorId: AUTHOR_ID };
+
+  it('автор удаляет своё сообщение', async () => {
+    const mock = createMockPrisma();
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result).toEqual({
+      status: 'deleted',
+      messageId: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+    });
+    expect(mock.message.delete).toHaveBeenCalledWith({ where: { id: 'message-uuid-1' } });
+  });
+
+  it('модератор удаляет чужое сообщение', async () => {
+    const mock = createMockPrisma();
+    // Автор сообщения — другой пользователь, инициатор — модератор
+    mock.message.findUnique.mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: 'user-uuid-2',
+    });
+    mock.channelMember.findUnique.mockResolvedValue({ role: ChannelRole.MODERATOR });
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result.status).toBe('deleted');
+    expect(mock.message.delete).toHaveBeenCalled();
+  });
+
+  it('владелец удаляет чужое сообщение', async () => {
+    const mock = createMockPrisma();
+    mock.message.findUnique.mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: 'user-uuid-2',
+    });
+    mock.channelMember.findUnique.mockResolvedValue({ role: ChannelRole.OWNER });
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result.status).toBe('deleted');
+    expect(mock.message.delete).toHaveBeenCalled();
+  });
+
+  it('MEMBER не удаляет чужое сообщение', async () => {
+    const mock = createMockPrisma();
+    mock.message.findUnique.mockResolvedValue({
+      id: 'message-uuid-1',
+      channelId: CHANNEL_ID,
+      authorId: 'user-uuid-2',
+    });
+    mock.channelMember.findUnique.mockResolvedValue({ role: ChannelRole.MEMBER });
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.message.delete).not.toHaveBeenCalled();
+  });
+
+  it('запрещает удаление пользователю вне состава канала', async () => {
+    const mock = createMockPrisma();
+    mock.channelMember.findUnique.mockResolvedValue(null);
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result).toEqual({ status: 'forbidden' });
+    expect(mock.message.delete).not.toHaveBeenCalled();
+  });
+
+  it('возвращает not_found для несуществующего сообщения', async () => {
+    const mock = createMockPrisma();
+    mock.message.findUnique.mockResolvedValue(null);
+
+    const result = await deleteMessage(mock.prisma as never, deleteInput);
+
+    expect(result).toEqual({ status: 'not_found' });
+    expect(mock.message.delete).not.toHaveBeenCalled();
+  });
+
+  it('удаление физически удаляет запись из БД', async () => {
+    const mock = createMockPrisma();
+
+    await deleteMessage(mock.prisma as never, deleteInput);
+
+    // Критерий готовности: запись удаляется из БД, а не помечается
+    expect(mock.message.delete).toHaveBeenCalledTimes(1);
+    expect(mock.message.delete).toHaveBeenCalledWith({ where: { id: deleteInput.messageId } });
   });
 });
