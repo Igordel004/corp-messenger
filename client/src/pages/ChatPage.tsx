@@ -6,13 +6,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router';
 import { type LayoutOutletContext } from '../components/AppLayout';
 import { MembersPanel } from '../components/MembersPanel';
+import { MessageBubble } from '../components/MessageBubble';
 import { MessageComposer } from '../components/MessageComposer';
 import { usePanelResize } from '../hooks/usePanelResize';
 import { useChannelSocket } from '../hooks/useChannelSocket';
 import { fetchChannelMessages, type ChannelMessage } from '../api/messages';
+import { type ChannelRole } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { formatMessageDate, formatMessageTime } from '../utils/dateTime';
 
 // Подпись типа приватности в шапке чата
 const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
@@ -24,6 +25,20 @@ const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
 // лексикографически, поэтому сортировка детерминирована
 const sortChronologically = (list: ChannelMessage[]): ChannelMessage[] =>
   [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+// Право удаления сообщения в канале.
+// MEMBER удаляет только свои сообщения, MODERATOR и OWNER — любые;
+// проверка дублирует серверную и управляет только видимостью кнопки
+const canDeleteMessage = (
+  message: ChannelMessage,
+  userId: string | undefined,
+  role: ChannelRole,
+): boolean => {
+  if (message.authorId === userId) {
+    return true;
+  }
+  return role === 'OWNER' || role === 'MODERATOR';
+};
 
 // Окно чата: лента сообщений, поле ввода и панель участников
 export const ChatPage = () => {
@@ -63,11 +78,29 @@ export const ChatPage = () => {
     setError(text);
   }, []);
 
-  const { sendMessage } = useChannelSocket({
+  // Удаление сообщения из ленты по подтверждению сервера
+  const handleDeletedMessage = useCallback((messageId: string) => {
+    setMessages((current) => current.filter((item) => item.id !== messageId));
+  }, []);
+
+  const { sendMessage, deleteMessage } = useChannelSocket({
     channelId,
     onMessage: handleIncomingMessage,
+    onDelete: handleDeletedMessage,
     onError: handleSocketError,
   });
+
+  // Запрос удаления сообщения: подтверждение придёт кадром
+  // message.deleted и удалит запись из ленты у всех участников
+  const handleDeleteRequest = useCallback(
+    (messageId: string) => {
+      const sent = deleteMessage(messageId);
+      if (!sent) {
+        setError('Нет соединения с сервером. Попробуйте позже.');
+      }
+    },
+    [deleteMessage],
+  );
 
   // Ресайз правой панели участников зажатием границы.
   // Панель закреплена у правого края, поэтому направление инвертировано
@@ -176,17 +209,13 @@ export const ChatPage = () => {
           )}
 
           {messages.map((message) => (
-            <div
+            <MessageBubble
               key={message.id}
-              className={`bubble ${message.authorId === user?.id ? 'bubble--outgoing' : 'bubble--incoming'}`}
-            >
-              <span className="bubble__author">{message.authorName}</span>
-              <div>{message.content}</div>
-              <div className="bubble__meta">
-                <span>{formatMessageDate(message.createdAt)}</span>
-                <span>{formatMessageTime(message.createdAt)}</span>
-              </div>
-            </div>
+              message={message}
+              isOutgoing={message.authorId === user?.id}
+              canDelete={canDeleteMessage(message, user?.id, activeChannel.role)}
+              onDelete={handleDeleteRequest}
+            />
           ))}
         </div>
 

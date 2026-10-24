@@ -638,6 +638,7 @@ a:hover {
 
 /* Пузырь сообщения */
 .bubble {
+  position: relative;
   max-width: 72%;
   padding: 8px 12px;
   font-size: 14px;
@@ -676,6 +677,39 @@ a:hover {
   margin-top: 2px;
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Кнопка удаления сообщения: ghost-иконка в правом верхнем углу пузыря.
+   Показывается при наведении, чтобы не перегружать ленту */
+.bubble__delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.bubble:hover .bubble__delete,
+.bubble__delete:focus-visible {
+  opacity: 1;
+}
+
+.bubble__delete:hover {
+  background: var(--status-danger-bg);
+  color: var(--status-danger);
 }
 
 /* Поле ввода сообщения */
