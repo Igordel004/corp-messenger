@@ -1,4 +1,8 @@
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
 import { app } from './app';
+import { prisma } from './db';
+import { createRealtimeHub } from './modules/realtime';
 
 export interface ServerConfig {
   port: number;
@@ -6,7 +10,16 @@ export interface ServerConfig {
 }
 
 export const startServer = (config: ServerConfig): void => {
-  app.listen(config.port, config.host, () => {
+  // WebSocket-сервер обслуживается на том же порту, что и REST API
+  const httpServer = createServer(app);
+  const hub = createRealtimeHub(prisma);
+  const wsServer = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+  wsServer.on('connection', (socket, request) => {
+    hub.handleConnection(socket, request);
+  });
+
+  httpServer.listen(config.port, config.host, () => {
     console.log(
       `Сервер корпоративного мессенджера запущен на http://${config.host}:${config.port}`,
     );

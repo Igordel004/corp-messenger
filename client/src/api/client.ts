@@ -33,10 +33,11 @@ apiClient.interceptors.request.use((config) => {
 });
 
 // Единый запрос обновления на все параллельные 401: без этого
-// несколько одновременных запросов запустили бы несколько ротаций
+// несколько одновременных запросов запустили бы несколько ротаций.
+// Той же функцией пользуется переподключение WebSocket после 4401
 let refreshInFlight: Promise<TokenPair> | null = null;
 
-const requestTokenRefresh = (): Promise<TokenPair> => {
+export const refreshTokens = (): Promise<TokenPair> => {
   if (!refreshInFlight) {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
@@ -86,7 +87,7 @@ apiClient.interceptors.response.use(
       if (!config.retriedAfterRefresh) {
         config.retriedAfterRefresh = true;
         try {
-          const pair = await requestTokenRefresh();
+          const pair = await refreshTokens();
           config.headers.Authorization = `Bearer ${pair.accessToken}`;
           return apiClient.request(config);
         } catch {
