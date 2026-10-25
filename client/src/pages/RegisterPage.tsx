@@ -5,14 +5,12 @@ import { getApiErrorMessage } from '../api/client';
 
 const CORPORATE_DOMAIN = '@corp.messenger.com';
 
-// Локальные ошибки формы (проверяются до отправки на сервер)
 interface FieldErrors {
   fullName?: string;
   email?: string;
   password?: string;
 }
 
-// Клиентская валидация полей формы регистрации
 const validateRegisterForm = (fullName: string, email: string, password: string): FieldErrors => {
   const errors: FieldErrors = {};
   if (fullName.trim().length === 0) {
@@ -27,7 +25,6 @@ const validateRegisterForm = (fullName: string, email: string, password: string)
   return errors;
 };
 
-// Страница регистрации сотрудника
 export const RegisterPage = () => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -55,14 +52,12 @@ export const RegisterPage = () => {
       setEmail('');
       setPassword('');
     } catch (error) {
-      // Отображение ошибок сервера: занятый email (409), валидация (400)
       setServerError(getApiErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Экран успешной регистрации
   if (successUser) {
     return (
       <main className="auth-page">

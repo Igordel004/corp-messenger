@@ -1,7 +1,6 @@
 import { apiClient } from './client';
 import { type ChannelRole } from './channels';
 
-// Участник канала для панели состава
 export interface ChannelMember {
   userId: string;
   fullName: string;
@@ -10,7 +9,6 @@ export interface ChannelMember {
   joinedAt: string;
 }
 
-// Участник, подтверждённый сервером после добавления
 export interface AddedMember {
   userId: string;
   fullName: string;
@@ -18,13 +16,11 @@ export interface AddedMember {
   role: ChannelRole;
 }
 
-// Список участников канала (доступен участникам канала)
 export const fetchChannelMembers = async (channelId: string): Promise<ChannelMember[]> => {
   const response = await apiClient.get<ChannelMember[]>(`/channels/${channelId}/members`);
   return response.data;
 };
 
-// Добавление участника по email (право OWNER и MODERATOR)
 export const addChannelMemberByEmail = async (
   channelId: string,
   email: string,
@@ -35,12 +31,10 @@ export const addChannelMemberByEmail = async (
   return response.data;
 };
 
-// Исключение участника (право только OWNER)
 export const removeChannelMemberById = async (channelId: string, userId: string): Promise<void> => {
   await apiClient.delete(`/channels/${channelId}/members/${userId}`);
 };
 
-// Смена локальной роли между MEMBER и MODERATOR (право только OWNER)
 export const changeMemberRole = async (
   channelId: string,
   userId: string,

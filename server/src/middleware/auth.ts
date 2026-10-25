@@ -1,7 +1,7 @@
 import { type Request, type Response, type NextFunction } from 'express';
-import { verifyAccessToken, type TokenPayload } from '../utils/token';
+import { type PrismaClient } from '../generated/prisma/client';
+import { verifyAccessToken, type TokenPayload } from '../services/auth';
 
-// Расширение типа запроса Express: payload сессии после прохождения проверки
 declare module 'express-serve-static-core' {
   interface Request {
     session?: TokenPayload;
@@ -10,9 +10,6 @@ declare module 'express-serve-static-core' {
 
 const BEARER_PREFIX = 'Bearer ';
 
-// Middleware проверки токена сессии в заголовке Authorization.
-// При успехе прикрепляет payload к req.session и передаёт управление дальше,
-// при отсутствии или невалидном токене отвечает 401.
 export const requireAuth = (req: Request, res: Response, next: NextFunction): void => {
   const header = req.headers.authorization;
   if (typeof header !== 'string' || !header.startsWith(BEARER_PREFIX)) {
@@ -27,3 +24,18 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ message: 'Невалидный или истёкший токен' });
   }
 };
+
+export const createRequireAdmin =
+  (prisma: PrismaClient) =>
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.session!.sub },
+      select: { globalRole: true },
+    });
+
+    if (user?.globalRole !== 'ADMIN') {
+      res.status(403).json({ message: 'Доступ запрещён: требуется роль администратора' });
+      return;
+    }
+    next();
+  };

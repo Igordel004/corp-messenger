@@ -1,17 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import {
-  createChannelWithOwner,
-  listUserChannels,
-  listChannelCatalog,
-  joinChannel,
-  listChannelMembers,
-  addChannelMember,
-  removeChannelMember,
-  changeChannelMemberRole,
-} from './channels';
+import { ChannelService } from './channel';
 import { ChannelType, ChannelRole } from '../generated/prisma/enums';
 
-// Идентификатор тестового создателя
 const CREATOR_ID = 'user-uuid-1';
 
 const input = {
@@ -28,7 +18,6 @@ const createdChannel = {
   updatedAt: new Date(),
 };
 
-// Мок Prisma: транзакция прокидывает пробы вложенных операций
 const createMockPrisma = () => {
   const channel = { create: vi.fn().mockResolvedValue(createdChannel) };
   const channelMember = { create: vi.fn().mockResolvedValue({}) };
@@ -42,7 +31,7 @@ describe('Unit Test: Транзакционное создание канала'
   it('создаёт канал и запись участника с ролью OWNER', async () => {
     const mock = createMockPrisma();
 
-    const result = await createChannelWithOwner(mock.prisma as never, input);
+    const result = await new ChannelService(mock.prisma as never).createWithOwner(input);
 
     expect(result).toEqual(createdChannel);
     expect(mock.channel.create).toHaveBeenCalledWith({
@@ -60,27 +49,25 @@ describe('Unit Test: Транзакционное создание канала'
   it('выполняет обе записи внутри одной транзакции', async () => {
     const mock = createMockPrisma();
 
-    await createChannelWithOwner(mock.prisma as never, input);
+    await new ChannelService(mock.prisma as never).createWithOwner(input);
 
     expect(mock.prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('пробрасывает ошибку транзакции, не создавая частичных записей', async () => {
     const mock = createMockPrisma();
-    // Ошибка на этапе создания участника: транзакция должна откатиться
     mock.channelMember.create.mockRejectedValue(new Error('constraint failed'));
 
-    await expect(createChannelWithOwner(mock.prisma as never, input)).rejects.toThrow(
+    await expect(new ChannelService(mock.prisma as never).createWithOwner(input)).rejects.toThrow(
       'constraint failed',
     );
-    // Участник не создан, канал — в рамках транзакции (откат Prisma)
     expect(mock.channelMember.create).toHaveBeenCalledTimes(1);
   });
 
   it('приватный канал создаётся с корректным типом', async () => {
     const mock = createMockPrisma();
 
-    await createChannelWithOwner(mock.prisma as never, {
+    await new ChannelService(mock.prisma as never).createWithOwner({
       ...input,
       type: ChannelType.PRIVATE,
     });
@@ -108,7 +95,7 @@ describe('Unit Test: Список каналов пользователя', () =
     ]);
     const prisma = { channelMember: { findMany } };
 
-    const result = await listUserChannels(prisma as never, CREATOR_ID);
+    const result = await new ChannelService(prisma as never).listUserChannels(CREATOR_ID);
 
     expect(findMany).toHaveBeenCalledWith({
       where: { userId: CREATOR_ID },
@@ -137,14 +124,13 @@ describe('Unit Test: Список каналов пользователя', () =
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = { channelMember: { findMany } };
 
-    const result = await listUserChannels(prisma as never, CREATOR_ID);
+    const result = await new ChannelService(prisma as never).listUserChannels(CREATOR_ID);
 
     expect(result).toEqual([]);
   });
 });
 
 describe('Unit Test: Каталог каналов', () => {
-  // Канал с отметкой об участии пользователя (или без неё)
   const channel = (id: string, name: string, type: ChannelType, memberIds: string[]) => ({
     id,
     name,
@@ -163,7 +149,7 @@ describe('Unit Test: Каталог каналов', () => {
       ]);
     const prisma = { channel: { findMany } };
 
-    const result = await listChannelCatalog(prisma as never, CREATOR_ID);
+    const result = await new ChannelService(prisma as never).listCatalog(CREATOR_ID);
 
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({ id: 'ch-1', isMember: false });
@@ -179,9 +165,8 @@ describe('Unit Test: Каталог каналов', () => {
       ]);
     const prisma = { channel: { findMany } };
 
-    const result = await listChannelCatalog(prisma as never, CREATOR_ID);
+    const result = await new ChannelService(prisma as never).listCatalog(CREATOR_ID);
 
-    // Приватный канал чужого пользователя не виден
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ id: 'ch-2', isMember: true });
   });
@@ -190,7 +175,7 @@ describe('Unit Test: Каталог каналов', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = { channel: { findMany } };
 
-    await listChannelCatalog(prisma as never, CREATOR_ID);
+    await new ChannelService(prisma as never).listCatalog(CREATOR_ID);
 
     expect(findMany).toHaveBeenCalledWith({
       include: {
@@ -204,14 +189,13 @@ describe('Unit Test: Каталог каналов', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const prisma = { channel: { findMany } };
 
-    expect(await listChannelCatalog(prisma as never, CREATOR_ID)).toEqual([]);
+    expect(await new ChannelService(prisma as never).listCatalog(CREATOR_ID)).toEqual([]);
   });
 });
 
 describe('Unit Test: Вступление в канал', () => {
   const CHANNEL_ID = 'ch-1';
 
-  // Мок канала с заданным типом и составом участников
   const mockChannel = (type: ChannelType, memberIds: string[] = []) => ({
     channel: {
       findUnique: vi.fn().mockResolvedValue({
@@ -231,7 +215,7 @@ describe('Unit Test: Вступление в канал', () => {
   it('добавляет участника с ролью MEMBER в публичный канал', async () => {
     const mock = mockChannel(ChannelType.PUBLIC);
 
-    const result = await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID);
+    const result = await new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID);
 
     expect(result).toEqual({
       status: 'joined',
@@ -246,7 +230,7 @@ describe('Unit Test: Вступление в канал', () => {
     const mock = mockChannel(ChannelType.PUBLIC);
     mock.channel.findUnique.mockResolvedValue(null);
 
-    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+    expect(await new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID)).toEqual({
       status: 'not_found',
     });
     expect(mock.channelMember.create).not.toHaveBeenCalled();
@@ -255,7 +239,7 @@ describe('Unit Test: Вступление в канал', () => {
   it('возвращает already_member для действующего участника', async () => {
     const mock = mockChannel(ChannelType.PUBLIC, [CREATOR_ID]);
 
-    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+    expect(await new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID)).toEqual({
       status: 'already_member',
     });
     expect(mock.channelMember.create).not.toHaveBeenCalled();
@@ -264,7 +248,7 @@ describe('Unit Test: Вступление в канал', () => {
   it('запрещает вступление в приватный канал', async () => {
     const mock = mockChannel(ChannelType.PRIVATE);
 
-    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+    expect(await new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID)).toEqual({
       status: 'private',
     });
     expect(mock.channelMember.create).not.toHaveBeenCalled();
@@ -274,7 +258,7 @@ describe('Unit Test: Вступление в канал', () => {
     const mock = mockChannel(ChannelType.PUBLIC);
     mock.channelMember.create.mockRejectedValue({ code: 'P2002' });
 
-    expect(await joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).toEqual({
+    expect(await new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID)).toEqual({
       status: 'already_member',
     });
   });
@@ -283,7 +267,7 @@ describe('Unit Test: Вступление в канал', () => {
     const mock = mockChannel(ChannelType.PUBLIC);
     mock.channelMember.create.mockRejectedValue(new Error('connection lost'));
 
-    await expect(joinChannel(mock as never, CHANNEL_ID, CREATOR_ID)).rejects.toThrow(
+    await expect(new ChannelService(mock as never).join(CHANNEL_ID, CREATOR_ID)).rejects.toThrow(
       'connection lost',
     );
   });
@@ -293,7 +277,6 @@ describe('Unit Test: Список участников канала', () => {
   const CHANNEL_ID = 'ch-1';
   const joinedAt = new Date('2026-01-01T10:00:00Z');
 
-  // Мок: участник канала и список его участников
   const mockMembers = (members: Array<{ userId: string; role: ChannelRole }>) => ({
     channelMember: {
       findUnique: vi.fn().mockResolvedValue({ id: 'm-requester' }),
@@ -320,7 +303,7 @@ describe('Unit Test: Список участников канала', () => {
       { userId: 'user-2', role: ChannelRole.MEMBER },
     ]);
 
-    const result = await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+    const result = await new ChannelService(mock as never).listMembers(CHANNEL_ID, CREATOR_ID);
 
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') {
@@ -340,7 +323,7 @@ describe('Unit Test: Список участников канала', () => {
   it('ищет участничество по составному ключу', async () => {
     const mock = mockMembers([{ userId: CREATOR_ID, role: ChannelRole.OWNER }]);
 
-    await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+    await new ChannelService(mock as never).listMembers(CHANNEL_ID, CREATOR_ID);
 
     expect(mock.channelMember.findUnique).toHaveBeenCalledWith({
       where: { userId_channelId: { userId: CREATOR_ID, channelId: CHANNEL_ID } },
@@ -350,7 +333,7 @@ describe('Unit Test: Список участников канала', () => {
   it('сортирует участников по дате вступления', async () => {
     const mock = mockMembers([{ userId: CREATOR_ID, role: ChannelRole.OWNER }]);
 
-    await listChannelMembers(mock as never, CHANNEL_ID, CREATOR_ID);
+    await new ChannelService(mock as never).listMembers(CHANNEL_ID, CREATOR_ID);
 
     expect(mock.channelMember.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ orderBy: { joinedAt: 'asc' } }),
@@ -361,7 +344,7 @@ describe('Unit Test: Список участников канала', () => {
     const mock = mockMembers([]);
     mock.channelMember.findUnique.mockResolvedValue(null);
 
-    const result = await listChannelMembers(mock as never, CHANNEL_ID, 'stranger');
+    const result = await new ChannelService(mock as never).listMembers(CHANNEL_ID, 'stranger');
 
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.channelMember.findMany).not.toHaveBeenCalled();
@@ -372,7 +355,7 @@ describe('Unit Test: Список участников канала', () => {
     mock.channelMember.findUnique.mockResolvedValue(null);
     mock.channel.findUnique.mockResolvedValue(null);
 
-    const result = await listChannelMembers(mock as never, CHANNEL_ID, 'stranger');
+    const result = await new ChannelService(mock as never).listMembers(CHANNEL_ID, 'stranger');
 
     expect(result).toEqual({ status: 'not_found' });
   });
@@ -388,7 +371,6 @@ describe('Unit Test: Добавление участника в канал', () 
     email: 'invitee@corp.messenger.com',
   };
 
-  // Мок с ролью запросившего в канале
   const mockAdd = (requesterRole: ChannelRole | null) => {
     const mock = {
       channel: {
@@ -411,7 +393,11 @@ describe('Unit Test: Добавление участника в канал', () 
   it('владелец добавляет участника с ролью MEMBER', async () => {
     const mock = mockAdd(ChannelRole.OWNER);
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result).toEqual({
       status: 'added',
@@ -430,7 +416,11 @@ describe('Unit Test: Добавление участника в канал', () 
   it('модератор тоже может добавлять участников', async () => {
     const mock = mockAdd(ChannelRole.MODERATOR);
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result.status).toBe('added');
   });
@@ -438,7 +428,11 @@ describe('Unit Test: Добавление участника в канал', () 
   it('обычный участник не может добавлять (403)', async () => {
     const mock = mockAdd(ChannelRole.MEMBER);
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.channelMember.create).not.toHaveBeenCalled();
@@ -447,7 +441,11 @@ describe('Unit Test: Добавление участника в канал', () 
   it('посторонний не может добавлять (403)', async () => {
     const mock = mockAdd(null);
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, 'stranger', invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      'stranger',
+      invitee.email,
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.user.findUnique).not.toHaveBeenCalled();
@@ -457,7 +455,11 @@ describe('Unit Test: Добавление участника в канал', () 
     const mock = mockAdd(ChannelRole.OWNER);
     mock.channel.findUnique.mockResolvedValue(null);
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result).toEqual({ status: 'not_found' });
   });
@@ -466,8 +468,7 @@ describe('Unit Test: Добавление участника в канал', () 
     const mock = mockAdd(ChannelRole.OWNER);
     mock.user.findUnique.mockResolvedValue(null);
 
-    const result = await addChannelMember(
-      mock as never,
+    const result = await new ChannelService(mock as never).addMember(
       CHANNEL_ID,
       CREATOR_ID,
       'ghost@corp.messenger.com',
@@ -481,7 +482,11 @@ describe('Unit Test: Добавление участника в канал', () 
     const mock = mockAdd(ChannelRole.OWNER);
     mock.channelMember.findUnique.mockResolvedValue({ id: 'm-existing' });
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result).toEqual({ status: 'already_member' });
     expect(mock.channelMember.create).not.toHaveBeenCalled();
@@ -491,7 +496,11 @@ describe('Unit Test: Добавление участника в канал', () 
     const mock = mockAdd(ChannelRole.OWNER);
     mock.channelMember.create.mockRejectedValue({ code: 'P2002' });
 
-    const result = await addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email);
+    const result = await new ChannelService(mock as never).addMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      invitee.email,
+    );
 
     expect(result).toEqual({ status: 'already_member' });
   });
@@ -501,7 +510,7 @@ describe('Unit Test: Добавление участника в канал', () 
     mock.channelMember.create.mockRejectedValue(new Error('connection lost'));
 
     await expect(
-      addChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, invitee.email),
+      new ChannelService(mock as never).addMember(CHANNEL_ID, CREATOR_ID, invitee.email),
     ).rejects.toThrow('connection lost');
   });
 });
@@ -510,7 +519,6 @@ describe('Unit Test: Исключение участника из канала',
   const CHANNEL_ID = 'ch-1';
   const TARGET_ID = 'user-2';
 
-  // Мок с ролью запросившего и записью исключаемого участника
   const mockRemove = (requesterRole: ChannelRole | null, targetRole: ChannelRole | null) => ({
     channel: {
       findUnique: vi.fn().mockResolvedValue({
@@ -529,9 +537,12 @@ describe('Unit Test: Исключение участника из канала',
   it('владелец исключает участника, запись удаляется из БД', async () => {
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+    );
 
-    // Критерий 4: запись участника удаляется
     expect(result).toEqual({ status: 'removed' });
     expect(mock.channelMember.delete).toHaveBeenCalledWith({
       where: { id: 'm-target' },
@@ -541,7 +552,11 @@ describe('Unit Test: Исключение участника из канала',
   it('владелец может исключить модератора', async () => {
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MODERATOR);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'removed' });
   });
@@ -549,7 +564,11 @@ describe('Unit Test: Исключение участника из канала',
   it('модератор не может исключать (403)', async () => {
     const mock = mockRemove(ChannelRole.MODERATOR, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'moderator', TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      'moderator',
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.channelMember.delete).not.toHaveBeenCalled();
@@ -558,7 +577,11 @@ describe('Unit Test: Исключение участника из канала',
   it('рядовой участник не может исключать (403)', async () => {
     const mock = mockRemove(ChannelRole.MEMBER, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'member', TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      'member',
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
   });
@@ -566,7 +589,11 @@ describe('Unit Test: Исключение участника из канала',
   it('посторонний не может исключать (403)', async () => {
     const mock = mockRemove(null, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'stranger', TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      'stranger',
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
   });
@@ -575,7 +602,11 @@ describe('Unit Test: Исключение участника из канала',
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.MEMBER);
     mock.channel.findUnique.mockResolvedValue(null);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'not_found' });
   });
@@ -583,7 +614,11 @@ describe('Unit Test: Исключение участника из канала',
   it('возвращает target_not_found для не-участника', async () => {
     const mock = mockRemove(ChannelRole.OWNER, null);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'target_not_found' });
     expect(mock.channelMember.delete).not.toHaveBeenCalled();
@@ -592,7 +627,11 @@ describe('Unit Test: Исключение участника из канала',
   it('владелец защищён от исключения', async () => {
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, CREATOR_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      CREATOR_ID,
+    );
 
     expect(result).toEqual({ status: 'owner_protected' });
     expect(mock.channelMember.delete).not.toHaveBeenCalled();
@@ -601,7 +640,11 @@ describe('Unit Test: Исключение участника из канала',
   it('участник выходит из канала сам, запись удаляется', async () => {
     const mock = mockRemove(ChannelRole.MEMBER, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, TARGET_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      TARGET_ID,
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'left' });
     expect(mock.channelMember.delete).toHaveBeenCalledWith({
@@ -612,7 +655,11 @@ describe('Unit Test: Исключение участника из канала',
   it('модератор может выйти из канала сам', async () => {
     const mock = mockRemove(ChannelRole.MODERATOR, ChannelRole.MODERATOR);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, TARGET_ID, TARGET_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      TARGET_ID,
+      TARGET_ID,
+    );
 
     expect(result).toEqual({ status: 'left' });
   });
@@ -620,7 +667,11 @@ describe('Unit Test: Исключение участника из канала',
   it('владелец не может выйти из канала сам', async () => {
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, CREATOR_ID);
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      CREATOR_ID,
+      CREATOR_ID,
+    );
 
     expect(result).toEqual({ status: 'owner_protected' });
     expect(mock.channelMember.delete).not.toHaveBeenCalled();
@@ -629,17 +680,19 @@ describe('Unit Test: Исключение участника из канала',
   it('посторонний не может выйти из канала', async () => {
     const mock = mockRemove(null, ChannelRole.MEMBER);
 
-    const result = await removeChannelMember(mock as never, CHANNEL_ID, 'stranger', 'stranger');
+    const result = await new ChannelService(mock as never).removeMember(
+      CHANNEL_ID,
+      'stranger',
+      'stranger',
+    );
 
     expect(result).toEqual({ status: 'forbidden' });
   });
 
   it('исключение цели с ролью OWNER другого пользователя отклоняется', async () => {
-    // Защита от гонки: у канала теоретически может появиться два владельца
     const mock = mockRemove(ChannelRole.OWNER, ChannelRole.OWNER);
 
-    const result = await removeChannelMember(
-      mock as never,
+    const result = await new ChannelService(mock as never).removeMember(
       CHANNEL_ID,
       CREATOR_ID,
       'another-owner',
@@ -654,7 +707,7 @@ describe('Unit Test: Исключение участника из канала',
     mock.channelMember.delete.mockRejectedValue(new Error('connection lost'));
 
     await expect(
-      removeChannelMember(mock as never, CHANNEL_ID, CREATOR_ID, TARGET_ID),
+      new ChannelService(mock as never).removeMember(CHANNEL_ID, CREATOR_ID, TARGET_ID),
     ).rejects.toThrow('connection lost');
   });
 });
@@ -663,7 +716,6 @@ describe('Unit Test: Смена локальной роли участника',
   const CHANNEL_ID = 'ch-1';
   const TARGET_ID = 'user-2';
 
-  // Мок: роль запросившего и текущая роль исходной цели
   const mockRole = (requesterRole: ChannelRole | null, targetRole: ChannelRole | null) => ({
     channel: {
       findUnique: vi.fn().mockResolvedValue({
@@ -682,15 +734,13 @@ describe('Unit Test: Смена локальной роли участника',
   it('владелец повышает MEMBER до MODERATOR', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
       ChannelRole.MODERATOR,
     );
 
-    // Критерий 2: повышение работает
     expect(result).toEqual({ status: 'changed', role: ChannelRole.MODERATOR });
     expect(mock.channelMember.update).toHaveBeenCalledWith({
       where: { id: 'm-target' },
@@ -701,23 +751,20 @@ describe('Unit Test: Смена локальной роли участника',
   it('владелец понижает MODERATOR до MEMBER', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MODERATOR);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
       ChannelRole.MEMBER,
     );
 
-    // Критерий 3: понижение работает
     expect(result).toEqual({ status: 'changed', role: ChannelRole.MEMBER });
   });
 
   it('модератор не может менять роли (403)', async () => {
     const mock = mockRole(ChannelRole.MODERATOR, ChannelRole.MEMBER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       'moderator',
       TARGET_ID,
@@ -731,8 +778,7 @@ describe('Unit Test: Смена локальной роли участника',
   it('рядовой участник не может менять роли (403)', async () => {
     const mock = mockRole(ChannelRole.MEMBER, ChannelRole.MEMBER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       'member',
       TARGET_ID,
@@ -745,15 +791,13 @@ describe('Unit Test: Смена локальной роли участника',
   it('владелец защищён от смены роли (400)', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.OWNER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       CREATOR_ID,
       ChannelRole.MODERATOR,
     );
 
-    // Критерий 4: роль OWNER неизменяема
     expect(result).toEqual({ status: 'owner_protected' });
     expect(mock.channelMember.update).not.toHaveBeenCalled();
   });
@@ -761,15 +805,13 @@ describe('Unit Test: Смена локальной роли участника',
   it('отклоняет попытку назначить роль OWNER', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
       ChannelRole.OWNER,
     );
 
-    // Критерий 4: переключение строго между MEMBER и MODERATOR
     expect(result).toEqual({ status: 'forbidden' });
     expect(mock.channel.findUnique).not.toHaveBeenCalled();
   });
@@ -777,8 +819,7 @@ describe('Unit Test: Смена локальной роли участника',
   it('отклоняет неизвестную роль', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
@@ -792,8 +833,7 @@ describe('Unit Test: Смена локальной роли участника',
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MEMBER);
     mock.channel.findUnique.mockResolvedValue(null);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
@@ -806,8 +846,7 @@ describe('Unit Test: Смена локальной роли участника',
   it('возвращает target_not_found для не-участника', async () => {
     const mock = mockRole(ChannelRole.OWNER, null);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
@@ -821,8 +860,7 @@ describe('Unit Test: Смена локальной роли участника',
   it('отклоняет смену на ту же роль (409)', async () => {
     const mock = mockRole(ChannelRole.OWNER, ChannelRole.MODERATOR);
 
-    const result = await changeChannelMemberRole(
-      mock as never,
+    const result = await new ChannelService(mock as never).changeMemberRole(
       CHANNEL_ID,
       CREATOR_ID,
       TARGET_ID,
@@ -838,8 +876,7 @@ describe('Unit Test: Смена локальной роли участника',
     mock.channelMember.update.mockRejectedValue(new Error('connection lost'));
 
     await expect(
-      changeChannelMemberRole(
-        mock as never,
+      new ChannelService(mock as never).changeMemberRole(
         CHANNEL_ID,
         CREATOR_ID,
         TARGET_ID,

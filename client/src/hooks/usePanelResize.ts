@@ -1,14 +1,6 @@
 import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 
-// Горизонтальный ресайз панели зажатием границы мышью.
-// Ширина ограничена диапазоном [min, max] и не меняется при ресайзе
-// других панелей: каждая панель держит своё состояние.
-//
-// Панель слева тянется вправо (дельта положительна), поэтому ширина
-// растёт. Панель справа закреплена у правого края: её граница — левый
-// край, и протяжка вправо сжимает панель, поэтому дельта инвертируется.
 interface PanelResizeOptions {
-  /** Инвертировать направление: тянуть вправо — сужать */
   invert?: boolean;
 }
 
@@ -20,7 +12,6 @@ export const usePanelResize = (
 ) => {
   const { invert = false } = options;
   const [width, setWidth] = useState(initialWidth);
-  // Ширина в момент зажатия и позиция мыши — база для расчёта дельты
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const handleMouseDown = useCallback(
@@ -42,7 +33,6 @@ export const usePanelResize = (
         dragRef.current = null;
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
-        // Курсор и выделение сбрасываются на случай выхода за пределы панели
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
       };

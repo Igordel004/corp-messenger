@@ -1,14 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { requireAuth } from './middleware';
-import { signAccessToken } from '../utils/token';
+import { requireAuth, createRequireAdmin } from './auth';
+import { signAccessToken } from '../services/auth';
 
-// Секрет подписи токенов для тестового окружения
 process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
 
-// Минимальное приложение с одним защищённым тестовым маршрутом
 const createTestApp = () => {
   const app = express();
   app.get('/protected', requireAuth, (req, res) => {
@@ -73,7 +71,6 @@ describe('Unit Test: Middleware проверки токена сессии', () 
   });
 
   it('возвращает 401 при истёкшем токене', async () => {
-    // Токен, созданный с истёкшим сроком действия (exp в прошлом)
     const expiredToken = jwt.sign(
       { sub: 'user-uuid-1', role: 'USER', exp: Math.floor(Date.now() / 1000) - 60 },
       process.env['JWT_SECRET']!,
@@ -93,6 +90,77 @@ describe('Unit Test: Middleware проверки токена сессии', () 
     const response = await request(createTestApp())
       .get('/protected')
       .set('Authorization', `Bearer ${malformedToken}`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('Unit Test: Middleware проверки роли администратора', () => {
+  beforeEach(() => {
+    process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
+  });
+
+  const createAdminApp = (globalRole: 'USER' | 'ADMIN' | null) => {
+    const prisma = {
+      user: { findUnique: vi.fn().mockResolvedValue(globalRole ? { globalRole } : null) },
+    };
+    const app = express();
+    app.get('/admin', requireAuth, createRequireAdmin(prisma as never), (req, res) => {
+      res.status(200).json({ session: req.session });
+    });
+    return app;
+  };
+
+  it('пропускает запрос с глобальной ролью ADMIN в базе', async () => {
+    const token = signAccessToken({ sub: 'admin-uuid-1', role: 'ADMIN' });
+    const response = await request(createAdminApp('ADMIN'))
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('возвращает 403 пользователю с ролью USER', async () => {
+    const token = signAccessToken({ sub: 'user-uuid-1', role: 'USER' });
+    const response = await request(createAdminApp('USER'))
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      message: 'Доступ запрещён: требуется роль администратора',
+    });
+  });
+
+  it('роль в базе важнее роли в токене: назначение действует без перелогина', async () => {
+    const token = signAccessToken({ sub: 'user-uuid-1', role: 'USER' });
+    const response = await request(createAdminApp('ADMIN'))
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('роль в базе важнее роли в токене: снятие роли блокирует доступ сразу', async () => {
+    const token = signAccessToken({ sub: 'admin-uuid-1', role: 'ADMIN' });
+    const response = await request(createAdminApp('USER'))
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('возвращает 403 для несуществующего пользователя', async () => {
+    const token = signAccessToken({ sub: 'ghost-uuid', role: 'ADMIN' });
+    const response = await request(createAdminApp(null))
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  it('возвращает 401 без токена до проверки роли', async () => {
+    const response = await request(createAdminApp('ADMIN')).get('/admin');
 
     expect(response.status).toBe(401);
   });

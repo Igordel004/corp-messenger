@@ -1,20 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
-import { prisma, disconnectDatabase } from '../db';
-import { signAccessToken } from '../utils/token';
+import { prisma, disconnectDatabase } from '../data-access/prisma';
+import { signAccessToken } from '../services/auth';
 
-// Уникальный префикс тестовых данных для изоляции прогонов
 const RUN_ID = Date.now();
 const USER_ID = `user-${RUN_ID}`;
 
-// Очистка тестовых каналов и пользователя до и после прогона
 const cleanup = async (): Promise<void> => {
   await prisma.channel.deleteMany({ where: { name: { startsWith: 'test-channel' } } });
   await prisma.user.deleteMany({ where: { id: USER_ID } });
 };
 
-// Создание тестового пользователя напрямую в БД (минуя регистрацию)
 const createTestUser = async (): Promise<void> => {
   await prisma.user.create({
     data: {
@@ -28,7 +25,6 @@ const createTestUser = async (): Promise<void> => {
   });
 };
 
-// Получение валидного токена сессии тестового пользователя
 const authToken = (): string => signAccessToken({ sub: USER_ID, role: 'USER' });
 
 describe('Integration Test: POST /api/channels (реальная БД)', () => {
@@ -56,12 +52,10 @@ describe('Integration Test: POST /api/channels (реальная БД)', () => {
       role: 'OWNER',
     });
 
-    // Критерий 2: канал сохранён в PostgreSQL
     const channel = await prisma.channel.findUnique({ where: { id: response.body.id } });
     expect(channel).not.toBeNull();
     expect(channel?.name).toBe(`test-channel-public-${RUN_ID}`);
 
-    // Критерий 3: создатель добавлен участником с ролью OWNER
     const member = await prisma.channelMember.findFirst({
       where: { channelId: response.body.id, userId: USER_ID },
     });
@@ -197,7 +191,6 @@ describe('Integration Test: GET /api/channels (реальная БД)', () => {
 });
 
 describe('Integration Test: GET /api/channels/catalog (реальная БД)', () => {
-  // Второй пользователь: владелец приватного канала
   const OTHER_ID = `other-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -232,13 +225,11 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
   });
 
   it('показывает публичный канал всем, а приватный — только участнику', async () => {
-    // Публичный канал создаёт второй пользователь
     const publicChannel = await request(app)
       .post('/api/channels')
       .set('Authorization', `Bearer ${signAccessToken({ sub: OTHER_ID, role: 'USER' })}`)
       .send({ name: `catalog-public-${RUN_ID}`, type: 'PUBLIC' });
 
-    // Приватный канал — тоже второй пользователь, текущий в него не входит
     const privateChannel = await request(app)
       .post('/api/channels')
       .set('Authorization', `Bearer ${signAccessToken({ sub: OTHER_ID, role: 'USER' })}`)
@@ -251,9 +242,7 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
     expect(response.status).toBe(200);
 
     const names = response.body.map((channel: { name: string }) => channel.name);
-    // Критерий 1: публичный виден как не-участник
     expect(names).toContain(`catalog-public-${RUN_ID}`);
-    // Критерий 1: чужой приватный канал скрыт
     expect(names).not.toContain(`catalog-private-${RUN_ID}`);
 
     const publicEntry = response.body.find(
@@ -261,13 +250,11 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
     );
     expect(publicEntry.isMember).toBe(false);
     expect(publicEntry.type).toBe('PUBLIC');
-    // Идентификаторы созданных каналов нужны следующим тестам
     expect(publicChannel.status).toBe(201);
     expect(privateChannel.status).toBe(201);
   });
 
   it('отмечает канал пользователя как участник', async () => {
-    // Текущий пользователь создаёт приватный канал — он же его владелец
     await request(app)
       .post('/api/channels')
       .set('Authorization', `Bearer ${authToken()}`)
@@ -280,7 +267,6 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
     const own = response.body.find(
       (channel: { name: string }) => channel.name === `catalog-own-${RUN_ID}`,
     );
-    // Критерий 1: собственный приватный канал виден и помечен
     expect(own).toMatchObject({ type: 'PRIVATE', isMember: true });
   });
 
@@ -291,7 +277,6 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
 });
 
 describe('Integration Test: POST /api/channels/:id/join (реальная БД)', () => {
-  // Второй пользователь — владелец каналов для вступления
   const OTHER_ID = `joiner-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -327,7 +312,6 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
     await disconnectDatabase();
   });
 
-  // Создание канала вторым пользователем и возврат его идентификатора
   const createOtherChannel = async (name: string, type: string): Promise<string> => {
     const response = await request(app)
       .post('/api/channels')
@@ -343,7 +327,6 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
       .post(`/api/channels/${channelId}/join`)
       .set('Authorization', `Bearer ${authToken()}`);
 
-    // Критерий 3: вступивший получает локальную роль MEMBER
     expect(response.status).toBe(201);
     expect(response.body).toEqual({
       id: channelId,
@@ -357,7 +340,6 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
     });
     expect(member?.role).toBe('MEMBER');
 
-    // Критерий 1: канал виден в каталоге как участнический
     const catalog = await request(app)
       .get('/api/channels/catalog')
       .set('Authorization', `Bearer ${authToken()}`);
@@ -378,7 +360,6 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
 
     expect(repeat.status).toBe(409);
 
-    // Запись участника не продублирована
     const count = await prisma.channelMember.count({
       where: { channelId, userId: USER_ID },
     });
@@ -420,7 +401,6 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
 });
 
 describe('Integration Test: GET /api/channels/:id/members (реальная БД)', () => {
-  // Второй пользователь: вступает в канал для проверки состава
   const OTHER_ID = `mlist-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -457,14 +437,12 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
   });
 
   it('участник видит список участников с локальными ролями', async () => {
-    // Канал создаётся текущим пользователем (он же OWNER)
     const created = await request(app)
       .post('/api/channels')
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ name: `members-public-${RUN_ID}`, type: 'PUBLIC' });
     const channelId = created.body.id as string;
 
-    // Второй пользователь вступает
     await request(app)
       .post(`/api/channels/${channelId}/join`)
       .set('Authorization', `Bearer ${otherAuth()}`);
@@ -473,7 +451,6 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
       .get(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`);
 
-    // Критерий 1: все участники с локальными ролями
     expect(response.status).toBe(200);
     expect(response.body).toHaveLength(2);
 
@@ -490,7 +467,6 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
   });
 
   it('список недоступен постороннему пользователю (403)', async () => {
-    // Приватный канал второго пользователя: текущий пользователь не участник
     const created = await request(app)
       .post('/api/channels')
       .set('Authorization', `Bearer ${otherAuth()}`)
@@ -521,7 +497,6 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
 });
 
 describe('Integration Test: POST /api/channels/:id/members (реальная БД)', () => {
-  // Приглашаемый сотрудник и рядовой участник канала
   const INVITEE_ID = `invitee-${RUN_ID}`;
   const MEMBER_ID = `plain-${RUN_ID}`;
 
@@ -555,7 +530,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
     });
   };
 
-  // Канал текущего пользователя (OWNER) для сценариев добавления
   const createOwnChannel = async (type = 'PRIVATE'): Promise<string> => {
     const response = await request(app)
       .post('/api/channels')
@@ -583,7 +557,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ email: `invitee-${RUN_ID}@corp.messenger.com` });
 
-    // Критерий 2: владелец добавляет участника
     expect(response.status).toBe(201);
     expect(response.body).toEqual({
       userId: INVITEE_ID,
@@ -597,7 +570,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
     });
     expect(record?.role).toBe('MEMBER');
 
-    // Критерий 1: новый участник появляется в списке
     const members = await request(app)
       .get(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`);
@@ -607,7 +579,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
   it('модератор может добавлять участников', async () => {
     const channelId = await createOwnChannel();
 
-    // Рядовой участник добавляется и повышается до модератора
     await request(app)
       .post(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`)
@@ -617,7 +588,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
       data: { role: 'MODERATOR' },
     });
 
-    // Модератор добавляет другого сотрудника
     const moderatorToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
     const response = await request(app)
       .post(`/api/channels/${channelId}/members`)
@@ -630,7 +600,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
   it('рядовой участник не может добавлять (403)', async () => {
     const channelId = await createOwnChannel();
 
-    // Добавляем рядового участника, он пытается пригласить другого
     await request(app)
       .post(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`)
@@ -717,7 +686,6 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
 });
 
 describe('Integration Test: DELETE /api/channels/:id/members/:userId (реальная БД)', () => {
-  // Участник, которого исключают, и модератор для проверки прав
   const MEMBER_ID = `victim-${RUN_ID}`;
   const MODERATOR_ID = `moder-${RUN_ID}`;
 
@@ -751,7 +719,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
     });
   };
 
-  // Канал текущего пользователя с добавленным участником заданной роли
   const createChannelWithMember = async (
     memberRole: 'MEMBER' | 'MODERATOR',
     memberUserId: string,
@@ -786,23 +753,19 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
       .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
       .set('Authorization', `Bearer ${authToken()}`);
 
-    // Критерий 3: действие владельца проходит
     expect(response.status).toBe(200);
 
-    // Критерий 4: запись удалена из БД
     const record = await prisma.channelMember.findUnique({
       where: { userId_channelId: { userId: MEMBER_ID, channelId } },
     });
     expect(record).toBeNull();
 
-    // Критерий 4: исключённый теряет доступ к списку участников
     const victimToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
     const lost = await request(app)
       .get(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${victimToken}`);
     expect(lost.status).toBe(403);
 
-    // Исключённый больше не виден в списке
     const members = await request(app)
       .get(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`);
@@ -821,7 +784,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
       .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
       .set('Authorization', `Bearer ${moderatorToken}`);
 
-    // Критерий 3: только владелец исключает
     expect(response.status).toBe(403);
 
     const record = await prisma.channelMember.findUnique({
@@ -871,7 +833,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
     const channelId = await createChannelWithMember('MEMBER', MEMBER_ID);
     const victimToken = signAccessToken({ sub: MEMBER_ID, role: 'USER' });
 
-    // Участник удаляет сам себя: userId в пути совпадает с токеном
     const response = await request(app)
       .delete(`/api/channels/${channelId}/members/${MEMBER_ID}`)
       .set('Authorization', `Bearer ${victimToken}`);
@@ -879,7 +840,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
     expect(response.status).toBe(200);
     expect(response.body.message).toContain('вышли');
 
-    // Запись удалена, доступ потерян
     const record = await prisma.channelMember.findUnique({
       where: { userId_channelId: { userId: MEMBER_ID, channelId } },
     });
@@ -890,7 +850,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
       .set('Authorization', `Bearer ${victimToken}`);
     expect(lost.status).toBe(403);
 
-    // Канал пропал из каталога участника
     const catalog = await request(app)
       .get('/api/channels/catalog')
       .set('Authorization', `Bearer ${victimToken}`)
@@ -909,7 +868,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('Владелец');
 
-    // Канал сохраняет владельца
     const record = await prisma.channelMember.findUnique({
       where: { userId_channelId: { userId: USER_ID, channelId } },
     });
@@ -918,7 +876,6 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
 });
 
 describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реальная БД)', () => {
-  // Участник, чью роль меняют, и модератор для проверки прав
   const TARGET_ID = `target-${RUN_ID}`;
   const MODERATOR_ID = `moder-${RUN_ID}`;
 
@@ -952,7 +909,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
     });
   };
 
-  // Канал текущего пользователя с участником заданной роли
   const createChannelWithTarget = async (targetRole: 'MEMBER' | 'MODERATOR'): Promise<string> => {
     const created = await request(app)
       .post('/api/channels')
@@ -985,7 +941,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ role: 'MODERATOR' });
 
-    // Критерий 2: повышение работает
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ userId: TARGET_ID, role: 'MODERATOR' });
 
@@ -994,7 +949,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
     });
     expect(record?.role).toBe('MODERATOR');
 
-    // Роль видна в списке участников
     const members = await request(app)
       .get(`/api/channels/${channelId}/members`)
       .set('Authorization', `Bearer ${authToken()}`);
@@ -1010,7 +964,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ role: 'MEMBER' });
 
-    // Критерий 3: понижение работает
     expect(response.status).toBe(200);
 
     const record = await prisma.channelMember.findUnique({
@@ -1021,7 +974,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
 
   it('модератор не может менять роли (403)', async () => {
     const channelId = await createChannelWithTarget('MEMBER');
-    // Модератор добавляется в тот же канал
     await prisma.channelMember.create({
       data: { channelId, userId: MODERATOR_ID, role: 'MODERATOR' },
     });
@@ -1032,7 +984,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
       .set('Authorization', `Bearer ${moderatorToken}`)
       .send({ role: 'MODERATOR' });
 
-    // Критерий 1: смена роли доступна только владельцу
     expect(response.status).toBe(403);
     expect(response.body.message).toContain('владелец');
 
@@ -1050,7 +1001,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ role: 'MEMBER' });
 
-    // Критерий 4: OWNER неизменяема
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('владельца');
 
@@ -1068,7 +1018,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ role: 'OWNER' });
 
-    // Критерий 4: переключение строго между MEMBER и MODERATOR
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('MEMBER или MODERATOR');
   });
@@ -1076,13 +1025,11 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
   it('повторная смена на ту же роль возвращает 409', async () => {
     const channelId = await createChannelWithTarget('MEMBER');
 
-    // Повышение до MODERATOR
     await request(app)
       .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
       .set('Authorization', `Bearer ${authToken()}`)
       .send({ role: 'MODERATOR' });
 
-    // Повторная попытка назначить ту же роль
     const response = await request(app)
       .patch(`/api/channels/${channelId}/members/${TARGET_ID}/role`)
       .set('Authorization', `Bearer ${authToken()}`)
@@ -1138,127 +1085,6 @@ describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реа
     const response = await request(app)
       .patch(`/api/channels/00000000-0000-4000-8000-000000000000/members/${TARGET_ID}/role`)
       .send({ role: 'MODERATOR' });
-
-    expect(response.status).toBe(401);
-  });
-});
-
-describe('Integration Test: GET /api/channels/:id/messages (реальная БД)', () => {
-  // Второй пользователь: проверка закрытия ленты для посторонних
-  const OTHER_ID = `msg-${RUN_ID}`;
-
-  const createSecondUser = async (): Promise<void> => {
-    await prisma.user.create({
-      data: {
-        id: OTHER_ID,
-        fullName: 'Второй Участник',
-        email: `msg-second-${RUN_ID}@corp.messenger.com`,
-        passwordHash: 'test-hash',
-        globalRole: 'USER',
-        status: 'ACTIVE',
-      },
-    });
-  };
-
-  // Сообщения удаляются каскадом вместе с каналом, отдельная очистка не нужна
-  const cleanupMessages = async (): Promise<void> => {
-    await prisma.channel.deleteMany({
-      where: { name: { startsWith: 'messages-' } },
-    });
-    await prisma.user.deleteMany({ where: { id: { in: [USER_ID, OTHER_ID] } } });
-  };
-
-  const otherAuth = (): string => signAccessToken({ sub: OTHER_ID, role: 'USER' });
-
-  // Создание канала текущим пользователем (он же OWNER и автор сообщений)
-  const createChannel = async (name: string, type = 'PUBLIC'): Promise<string> => {
-    const created = await request(app)
-      .post('/api/channels')
-      .set('Authorization', `Bearer ${authToken()}`)
-      .send({ name, type });
-    return created.body.id as string;
-  };
-
-  beforeAll(async () => {
-    await cleanupMessages();
-    await createTestUser();
-    await createSecondUser();
-  });
-
-  afterAll(async () => {
-    await cleanupMessages();
-    await disconnectDatabase();
-  });
-
-  it('возвращает сообщения в хронологическом порядке с именем автора и временем', async () => {
-    const channelId = await createChannel(`messages-feed-${RUN_ID}`);
-    const first = new Date('2026-10-24T12:40:00.000Z');
-    const second = new Date('2026-10-24T12:41:00.000Z');
-
-    // Записи создаются напрямую в БД с ручным временем для проверки порядка
-    await prisma.message.create({
-      data: { content: 'Второе сообщение', authorId: USER_ID, channelId, createdAt: second },
-    });
-    await prisma.message.create({
-      data: { content: 'Первое сообщение', authorId: USER_ID, channelId, createdAt: first },
-    });
-
-    const response = await request(app)
-      .get(`/api/channels/${channelId}/messages`)
-      .set('Authorization', `Bearer ${authToken()}`);
-
-    // Критерий 4: от старых к новым; критерий 3: автор, дата и время
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(2);
-    expect(response.body[0]).toMatchObject({
-      content: 'Первое сообщение',
-      authorId: USER_ID,
-      authorName: 'Тестовый Создатель',
-      createdAt: first.toISOString(),
-    });
-    expect(response.body[1]).toMatchObject({
-      content: 'Второе сообщение',
-      createdAt: second.toISOString(),
-    });
-  });
-
-  it('возвращает пустую ленту для канала без сообщений', async () => {
-    const channelId = await createChannel(`messages-empty-${RUN_ID}`);
-
-    const response = await request(app)
-      .get(`/api/channels/${channelId}/messages`)
-      .set('Authorization', `Bearer ${authToken()}`);
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual([]);
-  });
-
-  it('лента недоступна постороннему пользователю (403)', async () => {
-    // Приватный канал второго пользователя: текущий пользователь не участник
-    const created = await request(app)
-      .post('/api/channels')
-      .set('Authorization', `Bearer ${otherAuth()}`)
-      .send({ name: `messages-private-${RUN_ID}`, type: 'PRIVATE' });
-
-    const response = await request(app)
-      .get(`/api/channels/${created.body.id}/messages`)
-      .set('Authorization', `Bearer ${authToken()}`);
-
-    expect(response.status).toBe(403);
-  });
-
-  it('несуществующий канал возвращает 404', async () => {
-    const response = await request(app)
-      .get('/api/channels/00000000-0000-4000-8000-000000000000/messages')
-      .set('Authorization', `Bearer ${authToken()}`);
-
-    expect(response.status).toBe(404);
-  });
-
-  it('возвращает 401 без токена', async () => {
-    const response = await request(app).get(
-      '/api/channels/00000000-0000-4000-8000-000000000000/messages',
-    );
 
     expect(response.status).toBe(401);
   });
