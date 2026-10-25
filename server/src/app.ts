@@ -6,6 +6,8 @@ import { ChannelService } from './services/channel';
 import { createAuthRouter } from './controllers/auth';
 import { createChannelRouter } from './controllers/channel';
 import { createMessageRouter } from './controllers/message';
+import { createAdminRouter } from './controllers/admin';
+import { AdminService } from './services/admin';
 
 export const app = express();
 app.use(express.json());
@@ -19,6 +21,8 @@ app.use('/api/auth', createAuthRouter(new AuthService(prisma)));
 app.use('/api/channels', createChannelRouter(new ChannelService(prisma)));
 
 app.use('/api/channels', createMessageRouter(messageService));
+
+app.use('/api/admin', createAdminRouter(new AdminService(prisma)));
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', service: 'corporate-messenger-api' });
