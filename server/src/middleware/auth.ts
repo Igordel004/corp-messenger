@@ -24,3 +24,11 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ message: 'Невалидный или истёкший токен' });
   }
 };
+
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+  if (req.session?.role !== 'ADMIN') {
+    res.status(403).json({ message: 'Доступ запрещён: требуется роль администратора' });
+    return;
+  }
+  next();
+};

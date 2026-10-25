@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { requireAuth } from './auth';
+import { requireAuth, requireAdmin } from './auth';
 import { signAccessToken } from '../services/auth';
 
 process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
@@ -90,6 +90,47 @@ describe('Unit Test: Middleware проверки токена сессии', () 
     const response = await request(createTestApp())
       .get('/protected')
       .set('Authorization', `Bearer ${malformedToken}`);
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('Unit Test: Middleware проверки роли администратора', () => {
+  beforeEach(() => {
+    process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
+  });
+
+  const createAdminApp = () => {
+    const app = express();
+    app.get('/admin', requireAuth, requireAdmin, (req, res) => {
+      res.status(200).json({ session: req.session });
+    });
+    return app;
+  };
+
+  it('пропускает запрос с глобальной ролью ADMIN', async () => {
+    const token = signAccessToken({ sub: 'admin-uuid-1', role: 'ADMIN' });
+    const response = await request(createAdminApp())
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('возвращает 403 пользователю с ролью USER', async () => {
+    const token = signAccessToken({ sub: 'user-uuid-1', role: 'USER' });
+    const response = await request(createAdminApp())
+      .get('/admin')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({
+      message: 'Доступ запрещён: требуется роль администратора',
+    });
+  });
+
+  it('возвращает 401 без токена до проверки роли', async () => {
+    const response = await request(createAdminApp()).get('/admin');
 
     expect(response.status).toBe(401);
   });
