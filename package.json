@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:report": "vitest run --coverage --reporter=default --reporter=junit --reporter=json --outputFile.junit=test-results/junit.xml --outputFile.json=test-results.json && node scripts/publish-test-summary.js",
     "test:coverage": "vitest run --coverage",
     "build": "npm run build --workspaces --if-present",
     "prepare": "husky"
