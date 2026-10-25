@@ -954,6 +954,18 @@ a:hover {
   color: var(--text-muted);
 }
 
+.admin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.button--small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .profile {
   flex: 1;
   overflow-y: auto;

@@ -13,3 +13,23 @@ export const fetchAdminUsers = async (search?: string): Promise<AdminUserRecord[
   const response = await apiClient.get<AdminUserRecord[]>('/admin/users', { params });
   return response.data;
 };
+
+export const setUserStatus = async (
+  userId: string,
+  status: AdminUserRecord['status'],
+): Promise<AdminUserRecord> => {
+  const response = await apiClient.patch<AdminUserRecord>(`/admin/users/${userId}/status`, {
+    status,
+  });
+  return response.data;
+};
+
+export const setGlobalRole = async (
+  userId: string,
+  globalRole: AdminUserRecord['globalRole'],
+): Promise<AdminUserRecord> => {
+  const response = await apiClient.patch<AdminUserRecord>(`/admin/users/${userId}/role`, {
+    globalRole,
+  });
+  return response.data;
+};
