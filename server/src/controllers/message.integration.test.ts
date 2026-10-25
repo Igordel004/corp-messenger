@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../app';
 import { prisma, disconnectDatabase } from '../data-access/prisma';
-import { signAccessToken } from '../utils/token';
+import { signAccessToken } from '../services/auth';
 
 const RUN_ID = Date.now();
 const USER_ID = `feeduser-${RUN_ID}`;

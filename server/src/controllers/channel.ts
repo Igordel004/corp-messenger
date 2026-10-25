@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { requireAuth } from '../modules/middleware';
+import { requireAuth } from '../middleware/auth';
 import { type ChannelService } from '../services/channel';
 import { ChannelRole, ChannelType } from '../generated/prisma/enums';
 

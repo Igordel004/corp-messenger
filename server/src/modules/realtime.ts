@@ -1,7 +1,7 @@
 import { type IncomingMessage } from 'http';
 import type WebSocket from 'ws';
 import { type PrismaClient } from '../generated/prisma/client';
-import { verifyAccessToken } from '../utils/token';
+import { verifyAccessToken } from '../services/auth';
 import { MessageService, MAX_MESSAGE_LENGTH, type MessageInfo } from '../services/message';
 
 // Код закрытия соединения при непройденной аутентификации

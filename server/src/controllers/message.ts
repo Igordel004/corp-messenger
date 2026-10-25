@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { requireAuth } from '../modules/middleware';
+import { requireAuth } from '../middleware/auth';
 import { type MessageService } from '../services/message';
 
 export const createMessageRouter = (messageService: MessageService): express.Router => {

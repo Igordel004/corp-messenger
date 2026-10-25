@@ -2,13 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { requireAuth } from './middleware';
-import { signAccessToken } from '../utils/token';
+import { requireAuth } from './auth';
+import { signAccessToken } from '../services/auth';
 
-// Секрет подписи токенов для тестового окружения
 process.env['JWT_SECRET'] = 'middleware-unit-test-secret';
 
-// Минимальное приложение с одним защищённым тестовым маршрутом
 const createTestApp = () => {
   const app = express();
   app.get('/protected', requireAuth, (req, res) => {
@@ -73,7 +71,6 @@ describe('Unit Test: Middleware проверки токена сессии', () 
   });
 
   it('возвращает 401 при истёкшем токене', async () => {
-    // Токен, созданный с истёкшим сроком действия (exp в прошлом)
     const expiredToken = jwt.sign(
       { sub: 'user-uuid-1', role: 'USER', exp: Math.floor(Date.now() / 1000) - 60 },
       process.env['JWT_SECRET']!,

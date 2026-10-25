@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { type IncomingMessage } from 'http';
 import { createRealtimeHub, parseClientFrame, AUTH_CLOSE_CODE, type ServerFrame } from './realtime';
-import { signAccessToken } from '../utils/token';
+import { signAccessToken } from '../services/auth';
 
 // Идентификаторы тестового автора и канала
 const AUTHOR_ID = 'user-uuid-1';

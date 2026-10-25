@@ -1,9 +1,9 @@
 import express from 'express';
 import { prisma } from './data-access/prisma';
+import { AuthService } from './services/auth';
 import { MessageService } from './services/message';
 import { ChannelService } from './services/channel';
-import { createAuthRouter } from './modules/registration';
-import { createAuthenticationRouter } from './modules/authentication';
+import { createAuthRouter } from './controllers/auth';
 import { createChannelRouter } from './controllers/channel';
 import { createMessageRouter } from './controllers/message';
 
@@ -14,8 +14,7 @@ app.use(express.json());
 app.locals.prisma = prisma;
 
 // Маршруты аутентификации и регистрации
-app.use('/api/auth', createAuthRouter(prisma));
-app.use('/api/auth', createAuthenticationRouter(prisma));
+app.use('/api/auth', createAuthRouter(new AuthService(prisma)));
 
 // Маршруты каналов (требуют валидный токен сессии)
 app.use('/api/channels', createChannelRouter(new ChannelService(prisma)));
