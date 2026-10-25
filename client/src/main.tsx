@@ -11,8 +11,6 @@ import { HomePage } from './pages/HomePage';
 import { CatalogPage } from './pages/CatalogPage';
 import './styles.css';
 
-// Карта маршрутов приложения: публичные экраны входа и регистрации,
-// защищённые экраны внутри каркаса (шапка + боковая панель каналов)
 const App = () => (
   <AuthProvider>
     <Routes>

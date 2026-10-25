@@ -1,11 +1,9 @@
 import { Link } from 'react-router';
 
 interface AppLogoProps {
-  /** Дополнительный класс контейнера */
   className?: string;
 }
 
-// Фирменная монограмма приложения
 export const AppLogo = ({ className }: AppLogoProps) => (
   <Link to="/" className={['logo', className].filter(Boolean).join(' ')} aria-label="На главную">
     <span className="logo__mark" aria-hidden="true">

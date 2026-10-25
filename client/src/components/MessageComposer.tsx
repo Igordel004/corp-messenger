@@ -1,19 +1,14 @@
 import { useState, type FormEvent } from 'react';
 
-// Максимальная длина сообщения — ограничение сервера (см. server messages.ts)
 const MAX_MESSAGE_LENGTH = 2000;
 
 interface MessageComposerProps {
-  /** Отправка текста: false — сообщение не ушло (нет соединения) */
   onSend: (content: string) => boolean;
 }
 
-// Поле ввода сообщения: отправка по Enter или кнопке.
-// Пустые и состоящие из пробелов сообщения блокируются до отправки
 export const MessageComposer = ({ onSend }: MessageComposerProps) => {
   const [text, setText] = useState('');
 
-  // Отправка доступна только с непустым текстом после обрезки
   const canSend = text.trim().length > 0;
 
   const handleSubmit = (event: FormEvent) => {
@@ -22,7 +17,6 @@ export const MessageComposer = ({ onSend }: MessageComposerProps) => {
     if (!content) {
       return;
     }
-    // Поле очищается только после успешной отправки
     if (onSend(content)) {
       setText('');
     }

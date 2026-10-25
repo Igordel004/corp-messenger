@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchChannelCatalog, joinChannelById, type CatalogChannel } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
 
-// Бейдж типа приватности канала
 const TYPE_BADGES: Record<CatalogChannel['type'], { modifier: string; label: string }> = {
   PUBLIC: { modifier: 'badge--online', label: 'Публичный' },
   PRIVATE: { modifier: 'badge--moderator', label: 'Приватный' },
 };
 
-// Карточка канала в каталоге
 interface CatalogCardProps {
   channel: CatalogChannel;
   onJoin: (channelId: string) => void;
@@ -45,7 +43,6 @@ const CatalogCard = ({ channel, onJoin, isJoining }: CatalogCardProps) => (
   </div>
 );
 
-// Страница каталога каналов с поиском по названию
 export const CatalogPage = () => {
   const [channels, setChannels] = useState<CatalogChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,7 +75,6 @@ export const CatalogPage = () => {
     };
   }, []);
 
-  // Поиск фильтрует каталог по названию без запроса к серверу
   const visibleChannels = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) {
@@ -87,7 +83,6 @@ export const CatalogPage = () => {
     return channels.filter((channel) => channel.name.toLowerCase().includes(query));
   }, [channels, search]);
 
-  // Вступление: сервер подтверждает роль, канал помечается участником
   const handleJoin = async (channelId: string) => {
     setJoiningId(channelId);
     try {
@@ -97,7 +92,6 @@ export const CatalogPage = () => {
           channel.id === channelId ? { ...channel, isMember: true } : channel,
         ),
       );
-      // Боковая панель перезагружает свой список каналов
       window.dispatchEvent(new CustomEvent('channels-refresh'));
     } catch (error) {
       setLoadError(getApiErrorMessage(error));

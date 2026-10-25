@@ -7,23 +7,17 @@ import {
   type TokenPair,
 } from './token';
 
-// Базовый клиент REST API.
-// В dev-режиме запросы /api проксируются Vite на сервер (см. vite.config.ts)
 export const apiClient = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Маршруты, на которых авто-обновление запрещено: ошибка входа
-// не должна порождать запрос обновления сессии
 const NO_REFRESH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout'];
 
-// Повтор запроса после обновления токена (защита от повторного цикла)
 interface RetriableConfig extends InternalAxiosRequestConfig {
   retriedAfterRefresh?: boolean;
 }
 
-// Подстановка токена доступа в каждый исходящий запрос
 apiClient.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
@@ -57,7 +51,6 @@ export const refreshTokens = (): Promise<TokenPair> => {
   return refreshInFlight;
 };
 
-// Извлечение текста ошибки из ответа сервера или общий текст сбоя сети
 export const getApiErrorMessage = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data;
@@ -71,9 +64,6 @@ export const getApiErrorMessage = (error: unknown): string => {
   return 'Не удалось связаться с сервером. Попробуйте позже.';
 };
 
-// Ответ 401 при валидной сессии означает истёкший access-токен:
-// сервер обновляет пару, запрос повторяется с новым токеном.
-// При неудаче обновления сессия считается завершённой.
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {

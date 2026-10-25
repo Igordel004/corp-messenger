@@ -1,7 +1,3 @@
-// Чат активного канала: история сообщений загружается по REST,
-// новые сообщения приходят в реальном времени по WebSocket.
-// Каждое сообщение показывает имя автора, дату, время и текст.
-
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutletContext } from 'react-router';
 import { type LayoutOutletContext } from '../components/AppLayout';
@@ -15,20 +11,14 @@ import { type ChannelRole } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
-// Подпись типа приватности в шапке чата
 const TYPE_LABELS: Record<'PUBLIC' | 'PRIVATE', string> = {
   PUBLIC: 'Публичный канал',
   PRIVATE: 'Приватный канал',
 };
 
-// Хронологическая упорядоченность ленты: ISO-строки дат сравнимы
-// лексикографически, поэтому сортировка детерминирована
 const sortChronologically = (list: ChannelMessage[]): ChannelMessage[] =>
   [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-// Право удаления сообщения в канале.
-// MEMBER удаляет только свои сообщения, MODERATOR и OWNER — любые;
-// проверка дублирует серверную и управляет только видимостью кнопки
 const canDeleteMessage = (
   message: ChannelMessage,
   userId: string | undefined,
@@ -40,7 +30,6 @@ const canDeleteMessage = (
   return role === 'OWNER' || role === 'MODERATOR';
 };
 
-// Окно чата: лента сообщений, поле ввода и панель участников
 export const ChatPage = () => {
   const { activeChannel } = useOutletContext<LayoutOutletContext>();
   const { user } = useAuth();
@@ -49,14 +38,10 @@ export const ChatPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Контейнер ленты: прокрутка к последнему сообщению
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
   const channelId = activeChannel?.id ?? null;
 
-  // Новое сообщение из WebSocket: чужие каналы игнорируются,
-  // дубликаты отбрасываются по id, порядок восстанавливается
-  // хронологической сортировкой
   const handleIncomingMessage = useCallback(
     (message: ChannelMessage) => {
       if (message.channelId !== channelId) {
@@ -73,12 +58,10 @@ export const ChatPage = () => {
     [channelId],
   );
 
-  // Ошибка протокола (например, отклонённая отправка)
   const handleSocketError = useCallback((text: string) => {
     setError(text);
   }, []);
 
-  // Удаление сообщения из ленты по подтверждению сервера
   const handleDeletedMessage = useCallback((messageId: string) => {
     setMessages((current) => current.filter((item) => item.id !== messageId));
   }, []);
@@ -90,8 +73,6 @@ export const ChatPage = () => {
     onError: handleSocketError,
   });
 
-  // Запрос удаления сообщения: подтверждение придёт кадром
-  // message.deleted и удалит запись из ленты у всех участников
   const handleDeleteRequest = useCallback(
     (messageId: string) => {
       const sent = deleteMessage(messageId);
@@ -102,8 +83,6 @@ export const ChatPage = () => {
     [deleteMessage],
   );
 
-  // Ресайз правой панели участников зажатием границы.
-  // Панель закреплена у правого края, поэтому направление инвертировано
   const { width: membersWidth, handleMouseDown: onMembersResizeStart } = usePanelResize(
     280,
     220,
@@ -111,8 +90,6 @@ export const ChatPage = () => {
     { invert: true },
   );
 
-  // Загрузка истории при выборе канала. Флаг отмены отбрасывает
-  // устаревший ответ при быстром переключении между каналами
   useEffect(() => {
     if (!channelId) {
       return;
@@ -126,8 +103,6 @@ export const ChatPage = () => {
     fetchChannelMessages(channelId)
       .then((history) => {
         if (!cancelled) {
-          // Сообщение, пришедшее по WebSocket во время загрузки истории,
-          // не должно потеряться: история сливается с текущей лентой
           setMessages((current) => {
             const known = new Set(history.map((item) => item.id));
             const received = current.filter((item) => !known.has(item.id));
@@ -151,8 +126,6 @@ export const ChatPage = () => {
     };
   }, [channelId]);
 
-  // Автоскролл к последнему сообщению после загрузки истории
-  // и при появлении новых сообщений
   useEffect(() => {
     const container = messagesRef.current;
     if (container) {
@@ -160,8 +133,6 @@ export const ChatPage = () => {
     }
   }, [messages, channelId]);
 
-  // Отправка текста через WebSocket; при отсутствии соединения
-  // пользователю показывается ошибка, текст остаётся в поле
   const handleSend = useCallback(
     (content: string): boolean => {
       const sent = sendMessage(content);
@@ -173,7 +144,6 @@ export const ChatPage = () => {
     [sendMessage],
   );
 
-  // Канал не выбран: панель участников показывать некому
   if (!activeChannel) {
     return (
       <div className="chat__placeholder">
@@ -222,7 +192,6 @@ export const ChatPage = () => {
         <MessageComposer onSend={handleSend} />
       </section>
 
-      {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
       <div
         className="resize-handle resize-handle--left"
         role="separator"
@@ -231,7 +200,6 @@ export const ChatPage = () => {
         onMouseDown={onMembersResizeStart}
       />
 
-      {/* key сбрасывает состояние панели при переключении канала */}
       <MembersPanel
         key={activeChannel.id}
         channelId={activeChannel.id}

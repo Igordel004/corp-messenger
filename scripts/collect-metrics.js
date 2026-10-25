@@ -86,7 +86,6 @@ function generateDashboard() {
   const lint = getLintMetrics();
   const test = getTestMetrics();
 
-  // Динамический расчет статусов соответствия (Quality Gates)
   const lineCoverageValue = parseFloat(test.linesPct) || 0;
   const branchCoverageValue = parseFloat(test.branchesPct) || 0;
 
@@ -133,7 +132,6 @@ function generateDashboard() {
 | **Процесс разработки** | Суммарное количество коммитов в репозитории | **${git.totalCommits}** | Зафиксировано в истории |
 | **CI/CD пайплайн** | Итоговое состояние пайплайна сборки | **SUCCESS** | Пайплайн завершен без сбоев |
 
-*Отчет сформирован автоматически в процессе выполнения шага CI/CD (GitHub Actions).*
 `;
 
   console.log(markdown);

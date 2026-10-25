@@ -3,7 +3,6 @@ import { refreshTokens } from '../api/client';
 import { getAccessToken } from '../api/token';
 import { type ChannelMessage } from '../api/messages';
 
-// Кадры протокола реального времени: сервер → клиент
 export type ServerFrame =
   | { type: 'subscribed'; channelId: string }
   | { type: 'unsubscribed'; channelId: string }
@@ -11,43 +10,30 @@ export type ServerFrame =
   | { type: 'message.deleted'; channelId: string; messageId: string }
   | { type: 'error'; message: string };
 
-// Кадры протокола реального времени: клиент → сервер
 export type ClientFrame =
   | { type: 'subscribe'; channelId: string }
   | { type: 'unsubscribe'; channelId: string }
   | { type: 'send'; channelId: string; content: string }
   | { type: 'delete'; messageId: string };
 
-// Параметры подключения к ленте канала
 interface UseChannelSocketOptions {
-  /** Активный канал: подключение подписывается на его ленту */
   channelId: string | null;
-  /** Обработчик нового сообщения из ленты */
   onMessage: (message: ChannelMessage) => void;
-  /** Обработчик удаления сообщения из ленты */
   onDelete: (messageId: string) => void;
-  /** Обработчик ошибки протокола (например, отклонённой отправки) */
   onError?: (text: string) => void;
 }
 
-// Управление соединением реального времени
 export interface ChannelSocket {
-  /** Отправка сообщения в активный канал (false — соединение не готово) */
   sendMessage: (content: string) => boolean;
-  /** Запрос удаления сообщения (false — соединение не готово) */
   deleteMessage: (messageId: string) => boolean;
-  /** Признак установленного соединения */
   isConnected: boolean;
 }
 
-// Код закрытия сервером при непройденной аутентификации (см. server realtime)
 const AUTH_CLOSE_CODE = 4401;
 
-// Экспоненциальная задержка переподключения с потолком
 const BASE_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 
-// Адрес WebSocket-сервера текущего origin.
 // Токен сессии передаётся query-параметром: браузерный WebSocket
 // не умеет задавать заголовок Authorization при рукопожатии
 export const buildSocketUrl = (token: string): string => {
@@ -55,7 +41,6 @@ export const buildSocketUrl = (token: string): string => {
   return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 };
 
-// Проверка структуры кадра, полученного от сервера
 const isServerFrame = (value: unknown): value is ServerFrame => {
   if (typeof value !== 'object' || value === null) {
     return false;
@@ -70,7 +55,6 @@ const isServerFrame = (value: unknown): value is ServerFrame => {
   return frame.type === 'subscribed' || frame.type === 'unsubscribed' || frame.type === 'error';
 };
 
-// Разбор кадра сервера: null для некорректного JSON и неизвестных структур
 export const parseServerFrame = (raw: unknown): ServerFrame | null => {
   if (typeof raw !== 'string') {
     return null;
@@ -83,20 +67,15 @@ export const parseServerFrame = (raw: unknown): ServerFrame | null => {
   }
 };
 
-// Подключение к ленте канала с автоматическим восстановлением.
-// Одно соединение на всё время жизни: смена канала переиспользует его,
-// а обрыв связи переподключается с экспоненциальной задержкой.
 export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocket => {
   const { channelId, onMessage, onDelete, onError } = options;
   const [isConnected, setIsConnected] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
-  // Актуальные значения для замыканий событий сокета
   const channelRef = useRef(channelId);
   const onMessageRef = useRef(onMessage);
   const onDeleteRef = useRef(onDelete);
   const onErrorRef = useRef(onError);
-  // Канал, на который подписано текущее соединение
   const subscribedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -151,8 +130,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       };
 
       socket.onclose = (event): void => {
-        // Закрытие заменённого сокета не должно затирать новое
-        // подключение и планировать лишние переподключения
         if (socketRef.current !== socket) {
           return;
         }
@@ -164,8 +141,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       };
     };
 
-    // Восстановление соединения: при закрытии по токену сессия
-    // сначала обновляется, иначе сервер снова отклонит подключение
     const scheduleReconnect = (closeCode: number): void => {
       const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** attempts, MAX_RECONNECT_DELAY);
       attempts += 1;
@@ -181,9 +156,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       }, delay);
     };
 
-    // Подключение откладывается на тик: React.StrictMode в dev-режиме
-    // повторяет монтирование эффекта, и таймер первого запуска успевает
-    // отмениться до создания сокета — рукопожатие не обрывается
     connectTimer = window.setTimeout(() => {
       connectTimer = null;
       openSocket();
@@ -203,7 +175,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
     };
   }, []);
 
-  // Смена активного канала: отписка от прежнего и подписка на новый
   useEffect(() => {
     const socket = socketRef.current;
     const previous = subscribedRef.current;
@@ -223,7 +194,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
     subscribedRef.current = channelId;
   }, [channelId]);
 
-  // Отправка сообщения в активный канал через открытое соединение
   const sendMessage = useCallback((content: string): boolean => {
     const socket = socketRef.current;
     const channel = channelRef.current;
@@ -234,8 +204,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
     return true;
   }, []);
 
-  // Запрос удаления сообщения: права проверяет сервер, подтверждение
-  // приходит кадром message.deleted и удаляет запись из ленты
   const deleteMessage = useCallback((messageId: string): boolean => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { prisma, disconnectDatabase } from './db';
+import { prisma, disconnectDatabase } from './prisma';
 
 describe('Database Module: подключение Prisma к приложению', () => {
   afterEach(async () => {
@@ -13,7 +13,7 @@ describe('Database Module: подключение Prisma к приложению
   });
 
   it('повторный импорт возвращает тот же экземпляр (singleton)', async () => {
-    const secondImport = await import('./db');
+    const secondImport = await import('./prisma');
 
     expect(secondImport.prisma).toBe(prisma);
   });

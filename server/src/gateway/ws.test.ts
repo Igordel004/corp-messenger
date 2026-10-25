@@ -1,13 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { type IncomingMessage } from 'http';
-import { createRealtimeHub, parseClientFrame, AUTH_CLOSE_CODE, type ServerFrame } from './realtime';
-import { signAccessToken } from '../utils/token';
+import { createRealtimeHub, parseClientFrame, AUTH_CLOSE_CODE, type ServerFrame } from './ws';
+import { MessageService } from '../services/message';
+import { signAccessToken } from '../services/auth';
 
-// Идентификаторы тестового автора и канала
 const AUTHOR_ID = 'user-uuid-1';
 const CHANNEL_ID = 'channel-uuid-1';
 
-// Запись сообщения в том виде, в каком её возвращает Prisma с include
 const createdRow = {
   id: 'message-uuid-1',
   channelId: CHANNEL_ID,
@@ -17,8 +16,6 @@ const createdRow = {
   author: { fullName: 'Анна Петрова' },
 };
 
-// Ожидаемое представление сообщения после JSON-сериализации кадра:
-// дата превращается в строку ISO
 const expectedMessage = {
   id: 'message-uuid-1',
   channelId: CHANNEL_ID,
@@ -28,16 +25,13 @@ const expectedMessage = {
   createdAt: '2026-10-24T12:40:00.000Z',
 };
 
-// Валидный токен сессии для заголовка подключения
 const validToken = (userId = AUTHOR_ID): string => signAccessToken({ sub: userId, role: 'USER' });
 
-// Запрос WebSocket-рукопожатия с токеном в query-параметре
 const requestWithToken = (token: string | null): IncomingMessage => {
   const url = token === null ? '/ws' : `/ws?token=${token}`;
   return { url } as IncomingMessage;
 };
 
-// Мок сокета: запись отправленных кадров и событийная модель подписок
 const createMockSocket = () => {
   const handlers = new Map<string, (data?: unknown) => void | Promise<void>>();
   const sent: ServerFrame[] = [];
@@ -56,7 +50,6 @@ const createMockSocket = () => {
     socket: socket as never,
     rawSocket: socket,
     sent,
-    // Доставка клиентского кадра серверу
     emitMessage: (frame: unknown): Promise<void> =>
       Promise.resolve(handlers.get('message')?.(JSON.stringify(frame))),
     emitRaw: (raw: string): Promise<void> => Promise.resolve(handlers.get('message')?.(raw)),
@@ -66,7 +59,6 @@ const createMockSocket = () => {
   };
 };
 
-// Мок Prisma: по умолчанию автор состоит в канале и получает рассылку
 const createMockPrisma = () => {
   const channel = { findUnique: vi.fn().mockResolvedValue({ id: CHANNEL_ID }) };
   const channelMember = {
@@ -149,7 +141,7 @@ describe('Unit Test: Разбор клиентских кадров', () => {
 describe('Unit Test: Аутентификация подключения', () => {
   it('отклоняет подключение без токена', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
 
     hub.handleConnection(client.socket, requestWithToken(null));
@@ -160,7 +152,7 @@ describe('Unit Test: Аутентификация подключения', () =>
 
   it('отклоняет подключение без URL рукопожатия', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
 
     hub.handleConnection(client.socket, { url: undefined } as IncomingMessage);
@@ -170,7 +162,7 @@ describe('Unit Test: Аутентификация подключения', () =>
 
   it('отклоняет подключение с невалидным токеном', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
 
     hub.handleConnection(client.socket, requestWithToken('не-токен'));
@@ -180,7 +172,7 @@ describe('Unit Test: Аутентификация подключения', () =>
 
   it('обслуживает подключение с валидным токеном', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
 
     hub.handleConnection(client.socket, requestWithToken(validToken()));
@@ -194,7 +186,7 @@ describe('Unit Test: Аутентификация подключения', () =>
 describe('Unit Test: Подписка на каналы', () => {
   it('подписывает участника канала', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -210,7 +202,7 @@ describe('Unit Test: Подписка на каналы', () => {
   it('отклоняет подписку для не-участника канала', async () => {
     const mock = createMockPrisma();
     mock.channelMember.findUnique.mockResolvedValue(null);
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -223,7 +215,7 @@ describe('Unit Test: Подписка на каналы', () => {
 
   it('отписывает от канала', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -238,7 +230,7 @@ describe('Unit Test: Подписка на каналы', () => {
 
   it('возвращает ошибку на некорректный кадр', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -251,7 +243,7 @@ describe('Unit Test: Подписка на каналы', () => {
 describe('Unit Test: Отправка и рассылка сообщений', () => {
   it('сохраняет сообщение и рассылает его подписчикам канала', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const author = createMockSocket();
     const reader = createMockSocket();
     hub.handleConnection(author.socket, requestWithToken(validToken()));
@@ -265,7 +257,6 @@ describe('Unit Test: Отправка и рассылка сообщений', (
       content: '  Добрый день!  ',
     });
 
-    // Текст обрезан, сообщение сохранено от имени автора из токена
     expect(mock.message.create).toHaveBeenCalledWith({
       data: { content: 'Добрый день!', authorId: AUTHOR_ID, channelId: CHANNEL_ID },
       include: { author: { select: { fullName: true } } },
@@ -278,7 +269,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
   it('не рассылает сообщение неподписанному клиенту', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const author = createMockSocket();
     const reader = createMockSocket();
     hub.handleConnection(author.socket, requestWithToken(validToken()));
@@ -292,7 +283,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
   it('не рассылает сообщение исключённому из канала подписчику', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const author = createMockSocket();
     const removed = createMockSocket();
     hub.handleConnection(author.socket, requestWithToken(validToken()));
@@ -301,7 +292,6 @@ describe('Unit Test: Отправка и рассылка сообщений', (
     await author.emitMessage({ type: 'subscribe', channelId: CHANNEL_ID });
     await removed.emitMessage({ type: 'subscribe', channelId: CHANNEL_ID });
 
-    // Подписка была, но на момент рассылки состав канала изменился
     mock.channelMember.findMany.mockResolvedValue([{ userId: AUTHOR_ID }]);
     await author.emitMessage({ type: 'send', channelId: CHANNEL_ID, content: 'Привет' });
 
@@ -310,7 +300,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
   it('отклоняет отправку пустого сообщения', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -325,7 +315,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
   it('отклоняет отправку в несуществующий канал', async () => {
     const mock = createMockPrisma();
     mock.channel.findUnique.mockResolvedValue(null);
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -337,7 +327,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
   it('отклоняет отправку от не-участника канала', async () => {
     const mock = createMockPrisma();
     mock.channelMember.findUnique.mockResolvedValue(null);
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -350,7 +340,7 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
   it('удаляет подключение из рассылки при закрытии сокета', async () => {
     const mock = createMockPrisma();
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const author = createMockSocket();
     const reader = createMockSocket();
     hub.handleConnection(author.socket, requestWithToken(validToken()));
@@ -362,7 +352,6 @@ describe('Unit Test: Отправка и рассылка сообщений', (
 
     await author.emitMessage({ type: 'send', channelId: CHANNEL_ID, content: 'Привет' });
 
-    // Отключившийся клиент не получает рассылку
     expect(reader.sent).toEqual([{ type: 'subscribed', channelId: CHANNEL_ID }]);
   });
 });
@@ -374,7 +363,7 @@ describe('Unit Test: Удаление сообщений через WebSocket', 
       { userId: AUTHOR_ID },
       { userId: 'user-uuid-2' },
     ]);
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const author = createMockSocket();
     const reader = createMockSocket();
     hub.handleConnection(author.socket, requestWithToken(validToken()));
@@ -397,14 +386,13 @@ describe('Unit Test: Удаление сообщений через WebSocket', 
 
   it('возвращает ошибку при удалении чужого сообщения', async () => {
     const mock = createMockPrisma();
-    // Инициатор — MEMBER, автор сообщения другой пользователь
     mock.message.findUnique.mockResolvedValue({
       id: 'message-uuid-1',
       channelId: CHANNEL_ID,
       authorId: 'user-uuid-2',
     });
     mock.channelMember.findUnique.mockResolvedValue({ role: 'MEMBER' });
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
@@ -422,7 +410,7 @@ describe('Unit Test: Удаление сообщений через WebSocket', 
   it('возвращает ошибку при удалении несуществующего сообщения', async () => {
     const mock = createMockPrisma();
     mock.message.findUnique.mockResolvedValue(null);
-    const hub = createRealtimeHub(mock.prisma as never);
+    const hub = createRealtimeHub(new MessageService(mock.prisma as never));
     const client = createMockSocket();
     hub.handleConnection(client.socket, requestWithToken(validToken()));
 
