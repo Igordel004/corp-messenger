@@ -26,6 +26,14 @@ export type DeleteMessageResult =
   | { status: 'not_found' }
   | { status: 'forbidden' };
 
+// События сервиса сообщений: шлюз реального времени подписывается
+// на них и рассылает активным пользователям (In-Memory Event)
+export type MessageEvent =
+  | { type: 'message'; message: MessageInfo }
+  | { type: 'message.deleted'; channelId: string; messageId: string };
+
+export type MessageEventListener = (event: MessageEvent) => void | Promise<void>;
+
 const toMessageInfo = (message: {
   id: string;
   channelId: string;
@@ -43,7 +51,22 @@ const toMessageInfo = (message: {
 });
 
 export class MessageService {
+  private listener: MessageEventListener | null = null;
+
   constructor(private readonly prisma: PrismaClient) {}
+
+  // Подписка на события сервиса (один слушатель — шлюз рассылки)
+  onEvent(listener: MessageEventListener): void {
+    this.listener = listener;
+  }
+
+  async isChannelMember(channelId: string, userId: string): Promise<boolean> {
+    const membership = await this.prisma.channelMember.findUnique({
+      where: { userId_channelId: { userId, channelId } },
+      select: { userId: true },
+    });
+    return membership !== null;
+  }
 
   async create(input: {
     channelId: string;
@@ -76,7 +99,9 @@ export class MessageService {
       include: { author: { select: { fullName: true } } },
     });
 
-    return { status: 'sent', message: toMessageInfo(created) };
+    const message = toMessageInfo(created);
+    await this.listener?.({ type: 'message', message });
+    return { status: 'sent', message };
   }
 
   async list(channelId: string, requesterId: string): Promise<MessageListResult> {
@@ -143,6 +168,11 @@ export class MessageService {
 
     await this.prisma.message.delete({ where: { id: message.id } });
 
+    await this.listener?.({
+      type: 'message.deleted',
+      channelId: message.channelId,
+      messageId: message.id,
+    });
     return { status: 'deleted', messageId: message.id, channelId: message.channelId };
   }
 }

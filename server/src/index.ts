@@ -1,8 +1,7 @@
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { app } from './app';
-import { prisma } from './data-access/prisma';
-import { createRealtimeHub } from './modules/realtime';
+import { app, messageService } from './app';
+import { createRealtimeHub } from './gateway/ws';
 
 export interface ServerConfig {
   port: number;
@@ -10,9 +9,9 @@ export interface ServerConfig {
 }
 
 export const startServer = (config: ServerConfig): void => {
-  // WebSocket-сервер обслуживается на том же порту, что и REST API
+  // WebSocket-шлюз и REST API обслуживаются на одном порту
   const httpServer = createServer(app);
-  const hub = createRealtimeHub(prisma);
+  const hub = createRealtimeHub(messageService);
   const wsServer = new WebSocketServer({ server: httpServer, path: '/ws' });
 
   wsServer.on('connection', (socket, request) => {
