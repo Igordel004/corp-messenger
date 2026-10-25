@@ -392,6 +392,7 @@ a:hover {
   border-right: 1px solid var(--border-light);
   background: var(--bg-surface);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .sidebar__header {
@@ -408,6 +409,13 @@ a:hover {
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 12px 8px;
 }
 
 .sidebar__link {
@@ -458,10 +466,10 @@ a:hover {
   align-items: center;
   gap: 10px;
   width: calc(100% - 16px);
-  height: 56px;
+  min-height: 56px;
   margin: 2px 8px;
   padding: 8px 12px;
-  border: none;
+  border: 1px solid var(--border-light);
   border-radius: 10px;
   background: transparent;
   color: inherit;
@@ -477,6 +485,7 @@ a:hover {
 
 .channel-item--active {
   background: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 .channel-item--active .channel-item__name {
@@ -532,6 +541,7 @@ a:hover {
 
 .channel-item__badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
 }

@@ -117,6 +117,18 @@ export const AppLayout = () => {
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="sidebar__header">
             <h2 className="sidebar__title">Каналы</h2>
+            <button
+              type="button"
+              className="button button--ghost"
+              title="Создать канал"
+              aria-label="Создать канал"
+              onClick={() => setIsModalOpen(true)}
+            >
+              +
+            </button>
+          </div>
+
+          <div className="sidebar__nav">
             <Link
               to="/catalog"
               className={`sidebar__link${isCatalogOpen ? ' sidebar__link--active' : ''}`}
@@ -131,15 +143,6 @@ export const AppLayout = () => {
                 Администрирование
               </Link>
             )}
-            <button
-              type="button"
-              className="button button--ghost"
-              title="Создать канал"
-              aria-label="Создать канал"
-              onClick={() => setIsModalOpen(true)}
-            >
-              +
-            </button>
           </div>
 
           <div className="sidebar__list">

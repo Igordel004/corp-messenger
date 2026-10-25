@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import { type PrismaClient } from '../generated/prisma/client';
+import { requireAuth, createRequireAdmin } from '../middleware/auth';
 import { type AdminService, type UpdateUserResult } from '../services/admin';
 import { GlobalRole, AccountStatus } from '../generated/prisma/enums';
 
@@ -22,8 +23,12 @@ const respondWithUserResult = (res: Response, result: UpdateUserResult): void =>
   }
 };
 
-export const createAdminRouter = (adminService: AdminService): express.Router => {
+export const createAdminRouter = (
+  adminService: AdminService,
+  prisma: PrismaClient,
+): express.Router => {
   const router = express.Router();
+  const requireAdmin = createRequireAdmin(prisma);
 
   router.get('/users', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     const { search } = req.query as { search?: unknown };

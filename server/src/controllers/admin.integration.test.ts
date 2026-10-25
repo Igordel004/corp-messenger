@@ -71,6 +71,25 @@ describe('Integration Test: GET /api/admin/users (реальная БД)', () =>
     });
   });
 
+  it('роль, назначенная в БД, действует без перелогина', async () => {
+    await prisma.user.update({
+      where: { id: USER_ID },
+      data: { globalRole: 'ADMIN' },
+    });
+
+    const staleToken = userToken();
+    const response = await request(app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${staleToken}`);
+
+    expect(response.status).toBe(200);
+
+    await prisma.user.update({
+      where: { id: USER_ID },
+      data: { globalRole: 'USER' },
+    });
+  });
+
   it('администратор получает реестр с полями имени, email, роли и статуса', async () => {
     const response = await request(app)
       .get('/api/admin/users')
