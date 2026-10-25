@@ -1,6 +1,5 @@
 import { useAuth } from '../context/AuthContext';
 
-// Первоначальные сотрудника для аватара
 const getInitials = (fullName: string): string =>
   fullName
     .split(' ')
@@ -9,19 +8,16 @@ const getInitials = (fullName: string): string =>
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
 
-// Перевод глобальной роли на русский
 const ROLE_LABELS: Record<string, string> = {
   USER: 'Пользователь',
   ADMIN: 'Администратор',
 };
 
-// Перевод статуса аккаунта на русский
 const STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Активен',
   BLOCKED: 'Заблокирован',
 };
 
-// Экран профиля сотрудника (располагается внутри каркаса приложения)
 export const HomePage = () => {
   const { user } = useAuth();
 

@@ -7,12 +7,10 @@ import { usePanelResize } from '../hooks/usePanelResize';
 import { CreateChannelModal } from './CreateChannelModal';
 import { ChannelList } from './ChannelList';
 
-// Контекст роутера: активный канал доступен дочерним экранам
 export interface LayoutOutletContext {
   activeChannel: UserChannel | null;
 }
 
-// Каркас приложения: шапка, боковая панель каналов и основная область
 export const AppLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -27,23 +25,18 @@ export const AppLayout = () => {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [channelsVersion, setChannelsVersion] = useState(0);
 
-  // Ресайз левой панели каналов зажатием границы
   const { width: sidebarWidth, handleMouseDown: onSidebarResizeStart } = usePanelResize(
     280,
     220,
     480,
   );
 
-  // Сигнал обновления списка: каталог и создание канала сообщают панели,
-  // что состав каналов пользователя изменился
   useEffect(() => {
     const handleRefresh = () => setChannelsVersion((version) => version + 1);
     window.addEventListener('channels-refresh', handleRefresh);
     return () => window.removeEventListener('channels-refresh', handleRefresh);
   }, []);
 
-  // Загрузка каналов при монтировании каркаса, при смене экрана
-  // и по сигналу обновления из других компонентов
   useEffect(() => {
     let isCancelled = false;
 
@@ -71,13 +64,11 @@ export const AppLayout = () => {
     };
   }, [pathname, channelsVersion]);
 
-  // Выход: удаление сессии и перенаправление на страницу входа
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
   };
 
-  // Новый канал становится выбранным и попадает в начало списка
   const handleChannelCreated = (channel: {
     id: string;
     name: string;
@@ -89,7 +80,6 @@ export const AppLayout = () => {
     setActiveChannelId(channel.id);
   };
 
-  // Активный канал передаётся экранам через контекст роутера
   const activeChannel = channels.find((channel) => channel.id === activeChannelId) ?? null;
 
   return (
@@ -153,7 +143,6 @@ export const AppLayout = () => {
           </div>
         </aside>
 
-        {/* Разделитель: зажать мышью и тянуть для смены ширины панели */}
         <div
           className="resize-handle"
           role="separator"

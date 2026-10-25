@@ -5,13 +5,11 @@ import { getApiErrorMessage } from '../api/client';
 
 const CORPORATE_DOMAIN = '@corp.messenger.com';
 
-// Локальные ошибки формы (проверяются до отправки на сервер)
 interface FieldErrors {
   email?: string;
   password?: string;
 }
 
-// Клиентская валидация полей формы входа
 const validateLoginForm = (email: string, password: string): FieldErrors => {
   const errors: FieldErrors = {};
   if (!email.includes(CORPORATE_DOMAIN)) {
@@ -23,7 +21,6 @@ const validateLoginForm = (email: string, password: string): FieldErrors => {
   return errors;
 };
 
-// Страница аутентификации сотрудника
 export const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -49,7 +46,6 @@ export const LoginPage = () => {
       await login(email, password);
       navigate('/', { replace: true });
     } catch (error) {
-      // Отображение ошибок сервера: неверные данные (401), блокировка (403)
       setServerError(getApiErrorMessage(error));
     } finally {
       setIsSubmitting(false);

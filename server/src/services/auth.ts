@@ -192,7 +192,6 @@ const toProfile = (user: {
   status: user.status,
 });
 
-// Ошибка уникальности Prisma (P2002) — email уже занят параллельной записью
 const isUniqueConstraintViolation = (error: unknown): boolean =>
   typeof error === 'object' &&
   error !== null &&
@@ -280,7 +279,6 @@ export class AuthService {
       return { status: 'session_invalid' };
     }
 
-    // Роль и статус берутся из БД: данные токена могли устареть
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || user.status === 'BLOCKED') {
       await revokeRefreshToken(this.prisma, record.id);

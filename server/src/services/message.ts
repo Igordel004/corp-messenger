@@ -55,7 +55,6 @@ export class MessageService {
 
   constructor(private readonly prisma: PrismaClient) {}
 
-  // Подписка на события сервиса (один слушатель — шлюз рассылки)
   onEvent(listener: MessageEventListener): void {
     this.listener = listener;
   }

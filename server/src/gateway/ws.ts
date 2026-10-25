@@ -10,14 +10,12 @@ import {
 
 export const AUTH_CLOSE_CODE = 4401;
 
-// Кадры протокола реального времени: клиент → сервер
 export type ClientFrame =
   | { type: 'subscribe'; channelId: string }
   | { type: 'unsubscribe'; channelId: string }
   | { type: 'send'; channelId: string; content: string }
   | { type: 'delete'; messageId: string };
 
-// Кадры протокола реального времени: сервер → клиент
 export type ServerFrame =
   | { type: 'subscribed'; channelId: string }
   | { type: 'unsubscribed'; channelId: string }
@@ -36,7 +34,6 @@ const DELETE_ERRORS: Record<'not_found' | 'forbidden', string> = {
   forbidden: 'Удалять сообщения может только автор, модератор или владелец',
 };
 
-// Состояние подключения: пользователь и подписанные каналы
 interface ConnectionState {
   userId: string;
   channels: Set<string>;
@@ -70,9 +67,6 @@ const toDeleteFrame = (frame: Record<string, unknown>): ClientFrame | null => {
   return isNonEmptyString(frame.messageId) ? { type: 'delete', messageId: frame.messageId } : null;
 };
 
-// Разбор кадра, полученного от клиента.
-// Возвращает null для некорректного JSON, не-объектов,
-// неизвестных типов кадров и отсутствующих обязательных полей
 export const parseClientFrame = (raw: string): ClientFrame | null => {
   let parsed: unknown;
   try {
@@ -118,9 +112,6 @@ const authenticate = (request: IncomingMessage): string | null => {
   }
 };
 
-// WebSocket-шлюз: транспорт реального времени — рукопожатие,
-// комнаты каналов, разбор кадров. Бизнес-логика сообщений
-// делегируется MessageService, рассылка идёт по его событиям
 export const createRealtimeHub = (messageService: MessageService): RealtimeHub => {
   const connections = new Map<WebSocket, ConnectionState>();
 
@@ -128,8 +119,6 @@ export const createRealtimeHub = (messageService: MessageService): RealtimeHub =
     socket.send(JSON.stringify(frame));
   };
 
-  // Состав канала читается при каждой рассылке: исключённый участник
-  // перестаёт получать сообщения даже с открытой подпиской
   const broadcastToChannel = async (channelId: string, frame: ServerFrame): Promise<void> => {
     const memberIds = new Set(await messageService.listChannelMemberIds(channelId));
 

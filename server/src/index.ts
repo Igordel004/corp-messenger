@@ -9,7 +9,6 @@ export interface ServerConfig {
 }
 
 export const startServer = (config: ServerConfig): void => {
-  // WebSocket-шлюз и REST API обслуживаются на одном порту
   const httpServer = createServer(app);
   const hub = createRealtimeHub(messageService);
   const wsServer = new WebSocketServer({ server: httpServer, path: '/ws' });

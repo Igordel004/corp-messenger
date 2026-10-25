@@ -1,8 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { config as loadEnv } from 'dotenv';
 
-// Интеграционные тесты читают server/.env (DATABASE_URL),
-// когда Vitest запускается из корня монорепозитория
 loadEnv({ path: 'server/.env' });
 
 export default defineConfig({

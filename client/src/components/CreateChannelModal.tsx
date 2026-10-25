@@ -4,15 +4,11 @@ import { getApiErrorMessage } from '../api/client';
 
 const MIN_NAME_LENGTH = 3;
 
-// Свойства модального окна создания канала
 interface CreateChannelModalProps {
-  /** Закрытие окна без создания */
   onCancel: () => void;
-  /** Уведомление родителя о созданном канале */
   onCreated: (channel: CreatedChannel) => void;
 }
 
-// Модальное окно создания нового канала
 export const CreateChannelModal = ({ onCancel, onCreated }: CreateChannelModalProps) => {
   const [name, setName] = useState('');
   const [type, setType] = useState<ChannelType>('PUBLIC');
@@ -20,7 +16,6 @@ export const CreateChannelModal = ({ onCancel, onCreated }: CreateChannelModalPr
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Клиентская валидация названия до отправки на сервер
   const validateName = (value: string): string | null =>
     value.trim().length >= MIN_NAME_LENGTH
       ? null

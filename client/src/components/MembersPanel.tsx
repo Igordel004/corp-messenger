@@ -10,16 +10,12 @@ import { type ChannelRole } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
-// Модификатор бейджа по локальной роли участника
 const ROLE_BADGES: Record<ChannelRole, string> = {
   OWNER: 'badge--owner',
   MODERATOR: 'badge--moderator',
   MEMBER: 'badge--member',
 };
 
-// Строка участника в панели: аватар, имя, роль и кнопки действий.
-// Кнопки исключения и смены роли видит только владелец;
-// кнопка выхода — на собственной строке любого не-владельца.
 interface MemberRowProps {
   member: ChannelMember;
   myRole: ChannelRole;
@@ -72,7 +68,6 @@ const MemberRow = ({
         </button>
       )}
 
-      {/* Элементы смены роли видит только владелец; роль OWNER не переключается */}
       {isOwner && member.role !== 'OWNER' && (
         <button
           type="button"
@@ -92,7 +87,6 @@ const MemberRow = ({
         </button>
       )}
 
-      {/* Выход из канала: только на собственной строке и не у владельца */}
       {isSelf && !isOwner && (
         <button
           type="button"
@@ -111,12 +105,9 @@ const MemberRow = ({
   );
 };
 
-// Панель участников активного канала
 interface MembersPanelProps {
   channelId: string;
-  /** Локальная роль текущего пользователя в этом канале */
   myRole: ChannelRole;
-  /** Текущая ширина панели (задаётся ресайзом в родителе) */
   width: number;
 }
 
@@ -131,8 +122,6 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
 
-  // Права по критериям задачи: добавляют владелец и модератор.
-  // Исключение, смена роли и выход из канала проверяются в MemberRow.
   const canAdd = myRole === 'OWNER' || myRole === 'MODERATOR';
 
   const loadMembers = useCallback(async () => {
@@ -146,13 +135,11 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     }
   }, [channelId]);
 
-  // Загрузка состава при открытии канала
   useEffect(() => {
     setIsLoading(true);
     loadMembers();
   }, [loadMembers]);
 
-  // Добавление участника по email с перезагрузкой списка
   const handleAdd = async (event: FormEvent) => {
     event.preventDefault();
     if (!inviteEmail.trim()) {
@@ -171,7 +158,6 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     }
   };
 
-  // Исключение участника с перезагрузкой списка
   const handleRemove = async (userId: string) => {
     setRemovingUserId(userId);
     try {
@@ -184,7 +170,6 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     }
   };
 
-  // Переключение роли между MEMBER и MODERATOR (критерии 2 и 3)
   const handleChangeRole = async (userId: string, role: ChannelRole) => {
     setChangingRoleId(userId);
     try {
@@ -197,8 +182,6 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     }
   };
 
-  // Выход участника из канала: удаляет собственную запись и
-  // уведомляет панель каналов, чтобы её список обновился
   const handleLeave = async () => {
     if (!user) {
       return;

@@ -296,8 +296,6 @@ export class ChannelService {
     return { status: requesterId === targetUserId ? 'left' : 'removed' };
   }
 
-  // Роль OWNER неизменяема: переключение доступно строго между
-  // MEMBER и MODERATOR, и только владелец канала
   async changeMemberRole(
     channelId: string,
     requesterId: string,
