@@ -17,6 +17,8 @@ export const AppLayout = () => {
   const { pathname } = useLocation();
   const isProfileOpen = pathname === '/profile';
   const isCatalogOpen = pathname === '/catalog';
+  const isAdminOpen = pathname === '/admin';
+  const isAdmin = user?.globalRole === 'ADMIN';
 
   const [channels, setChannels] = useState<UserChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -121,6 +123,14 @@ export const AppLayout = () => {
             >
               Каталог
             </Link>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className={`sidebar__link${isAdminOpen ? ' sidebar__link--active' : ''}`}
+              >
+                Администрирование
+              </Link>
+            )}
             <button
               type="button"
               className="button button--ghost"
