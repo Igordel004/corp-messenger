@@ -22,7 +22,7 @@ app.use('/api/channels', createChannelRouter(new ChannelService(prisma)));
 
 app.use('/api/channels', createMessageRouter(messageService));
 
-app.use('/api/admin', createAdminRouter(new AdminService(prisma)));
+app.use('/api/admin', createAdminRouter(new AdminService(prisma), prisma));
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', service: 'corporate-messenger-api' });

@@ -1,7 +1,7 @@
 import { type Request, type Response, type NextFunction } from 'express';
+import { type PrismaClient } from '../generated/prisma/client';
 import { verifyAccessToken, type TokenPayload } from '../services/auth';
 
-// Расширение типа запроса Express: payload сессии после прохождения проверки
 declare module 'express-serve-static-core' {
   interface Request {
     session?: TokenPayload;
@@ -25,10 +25,17 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
   }
 };
 
-export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.session?.role !== 'ADMIN') {
-    res.status(403).json({ message: 'Доступ запрещён: требуется роль администратора' });
-    return;
-  }
-  next();
-};
+export const createRequireAdmin =
+  (prisma: PrismaClient) =>
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.session!.sub },
+      select: { globalRole: true },
+    });
+
+    if (user?.globalRole !== 'ADMIN') {
+      res.status(403).json({ message: 'Доступ запрещён: требуется роль администратора' });
+      return;
+    }
+    next();
+  };
