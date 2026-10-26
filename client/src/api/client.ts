@@ -8,7 +8,7 @@ import {
 } from './token';
 
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env['VITE_API_URL'] || '/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -26,9 +26,6 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Единый запрос обновления на все параллельные 401: без этого
-// несколько одновременных запросов запустили бы несколько ротаций.
-// Той же функцией пользуется переподключение WebSocket после 4401
 let refreshInFlight: Promise<TokenPair> | null = null;
 
 export const refreshTokens = (): Promise<TokenPair> => {
@@ -37,7 +34,6 @@ export const refreshTokens = (): Promise<TokenPair> => {
     if (!refreshToken) {
       return Promise.reject(new Error('Refresh-токен отсутствует'));
     }
-    // Прямой запрос через axios: apiClient добавил бы свой интерцептор 401
     refreshInFlight = axios
       .post<TokenPair>('/api/auth/refresh', { refreshToken })
       .then((response) => {
