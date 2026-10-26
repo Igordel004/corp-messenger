@@ -30,10 +30,20 @@ let memberId = '';
 let strangerId = '';
 
 const cleanup = async (): Promise<void> => {
-  await prisma.channel.deleteMany({ where: { name: CHANNEL_NAME } });
+  await prisma.channel.deleteMany({ where: { name: { in: [CHANNEL_NAME, 'abc'] } } });
   await prisma.user.deleteMany({
     where: {
-      email: { in: [OWNER_EMAIL, MOD_EMAIL, MEMBER_EMAIL, STRANGER_EMAIL, ADMIN_EMAIL] },
+      email: {
+        in: [
+          OWNER_EMAIL,
+          MOD_EMAIL,
+          MEMBER_EMAIL,
+          STRANGER_EMAIL,
+          ADMIN_EMAIL,
+          `edge-pass-${RUN_ID}@corp.messenger.com`,
+          `edge-block-${RUN_ID}@corp.messenger.com`,
+        ],
+      },
     },
   });
 };

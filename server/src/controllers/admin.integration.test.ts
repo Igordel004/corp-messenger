@@ -49,7 +49,7 @@ const cleanup = async (): Promise<void> => {
   });
 };
 
-describe('Integration Test: GET /api/admin/users (реальная БД)', () => {
+describe('Integration Test: GET /api/admin/users (PostgreSQL)', () => {
   beforeAll(async () => {
     await cleanup();
     await createUsers();
