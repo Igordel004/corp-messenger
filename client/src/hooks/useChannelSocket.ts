@@ -34,11 +34,12 @@ const AUTH_CLOSE_CODE = 4401;
 const BASE_RECONNECT_DELAY = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 
-// Токен сессии передаётся query-параметром: браузерный WebSocket
-// не умеет задавать заголовок Authorization при рукопожатии
 export const buildSocketUrl = (token: string): string => {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  const apiBase = import.meta.env['VITE_API_URL'] as string | undefined;
+  const socketBase = apiBase
+    ? `${apiBase.replace(/^http/, 'ws').replace(/\/api\/?$/, '')}/ws`
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
+  return `${socketBase}?token=${encodeURIComponent(token)}`;
 };
 
 const isServerFrame = (value: unknown): value is ServerFrame => {
@@ -100,7 +101,6 @@ export const useChannelSocket = (options: UseChannelSocketOptions): ChannelSocke
       socketRef.current = socket;
 
       socket.onopen = (): void => {
-        // События устаревших подключений не должны влиять на состояние
         if (socketRef.current !== socket) {
           return;
         }
