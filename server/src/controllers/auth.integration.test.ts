@@ -13,7 +13,7 @@ const cleanupRegisterUsers = async (): Promise<void> => {
   });
 };
 
-describe('Integration Test: POST /api/auth/register (реальная БД)', () => {
+describe('Integration Test: POST /api/auth/register (PostgreSQL)', () => {
   beforeAll(cleanupRegisterUsers);
   afterAll(async () => {
     await cleanupRegisterUsers();
@@ -114,11 +114,16 @@ const password = 'secretPass123';
 
 const cleanupSessionUsers = async (): Promise<void> => {
   await prisma.user.deleteMany({
-    where: { email: { contains: `+auth${authRunId}@` } },
+    where: {
+      OR: [
+        { email: { contains: `+auth${authRunId}@` } },
+        { email: { contains: `+rt${authRunId}@` } },
+      ],
+    },
   });
 };
 
-describe('Integration Test: аутентификация и сессия (реальная БД)', () => {
+describe('Integration Test: аутентификация и сессия (PostgreSQL)', () => {
   beforeAll(cleanupSessionUsers);
   afterAll(async () => {
     await cleanupSessionUsers();
@@ -237,7 +242,7 @@ describe('Integration Test: аутентификация и сессия (реа
   });
 });
 
-describe('Integration Test: ротация и отзыв refresh-токенов (реальная БД)', () => {
+describe('Integration Test: ротация и отзыв refresh-токенов (PostgreSQL)', () => {
   const registerAndLogin = async (name: string) => {
     const email = `${name}+rt${authRunId}@corp.messenger.com`;
     await request(app).post('/api/auth/register').send({

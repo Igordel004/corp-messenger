@@ -1,7 +1,4 @@
-import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
-import { app, messageService } from './app';
-import { createRealtimeHub } from './gateway/ws';
+import { createHttpServer } from './app';
 
 export interface ServerConfig {
   port: number;
@@ -9,13 +6,7 @@ export interface ServerConfig {
 }
 
 export const startServer = (config: ServerConfig): void => {
-  const httpServer = createServer(app);
-  const hub = createRealtimeHub(messageService);
-  const wsServer = new WebSocketServer({ server: httpServer, path: '/ws' });
-
-  wsServer.on('connection', (socket, request) => {
-    hub.handleConnection(socket, request);
-  });
+  const httpServer = createHttpServer();
 
   httpServer.listen(config.port, config.host, () => {
     console.log(

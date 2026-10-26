@@ -52,7 +52,7 @@ const createChannel = async (name: string, type = 'PUBLIC'): Promise<string> => 
   return created.body.id as string;
 };
 
-describe('Integration Test: GET /api/channels/:id/messages (реальная БД)', () => {
+describe('Integration Test: GET /api/channels/:id/messages (PostgreSQL)', () => {
   beforeAll(async () => {
     await cleanupMessages();
     await createTestUser();

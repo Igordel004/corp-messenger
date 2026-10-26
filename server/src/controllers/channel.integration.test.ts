@@ -27,7 +27,7 @@ const createTestUser = async (): Promise<void> => {
 
 const authToken = (): string => signAccessToken({ sub: USER_ID, role: 'USER' });
 
-describe('Integration Test: POST /api/channels (реальная БД)', () => {
+describe('Integration Test: POST /api/channels (PostgreSQL)', () => {
   beforeAll(async () => {
     await cleanup();
     await createTestUser();
@@ -149,7 +149,7 @@ describe('Integration Test: POST /api/channels (реальная БД)', () => {
   });
 });
 
-describe('Integration Test: GET /api/channels (реальная БД)', () => {
+describe('Integration Test: GET /api/channels (PostgreSQL)', () => {
   beforeAll(async () => {
     await cleanup();
     await createTestUser();
@@ -190,7 +190,7 @@ describe('Integration Test: GET /api/channels (реальная БД)', () => {
   });
 });
 
-describe('Integration Test: GET /api/channels/catalog (реальная БД)', () => {
+describe('Integration Test: GET /api/channels/catalog (PostgreSQL)', () => {
   const OTHER_ID = `other-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -276,7 +276,7 @@ describe('Integration Test: GET /api/channels/catalog (реальная БД)', 
   });
 });
 
-describe('Integration Test: POST /api/channels/:id/join (реальная БД)', () => {
+describe('Integration Test: POST /api/channels/:id/join (PostgreSQL)', () => {
   const OTHER_ID = `joiner-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -400,7 +400,7 @@ describe('Integration Test: POST /api/channels/:id/join (реальная БД)'
   });
 });
 
-describe('Integration Test: GET /api/channels/:id/members (реальная БД)', () => {
+describe('Integration Test: GET /api/channels/:id/members (PostgreSQL)', () => {
   const OTHER_ID = `mlist-${RUN_ID}`;
 
   const createSecondUser = async (): Promise<void> => {
@@ -496,7 +496,7 @@ describe('Integration Test: GET /api/channels/:id/members (реальная БД
   });
 });
 
-describe('Integration Test: POST /api/channels/:id/members (реальная БД)', () => {
+describe('Integration Test: POST /api/channels/:id/members (PostgreSQL)', () => {
   const INVITEE_ID = `invitee-${RUN_ID}`;
   const MEMBER_ID = `plain-${RUN_ID}`;
 
@@ -685,7 +685,7 @@ describe('Integration Test: POST /api/channels/:id/members (реальная Б�
   });
 });
 
-describe('Integration Test: DELETE /api/channels/:id/members/:userId (реальная БД)', () => {
+describe('Integration Test: DELETE /api/channels/:id/members/:userId (PostgreSQL)', () => {
   const MEMBER_ID = `victim-${RUN_ID}`;
   const MODERATOR_ID = `moder-${RUN_ID}`;
 
@@ -875,7 +875,7 @@ describe('Integration Test: DELETE /api/channels/:id/members/:userId (реаль
   });
 });
 
-describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (реальная БД)', () => {
+describe('Integration Test: PATCH /api/channels/:id/members/:userId/role (PostgreSQL)', () => {
   const TARGET_ID = `target-${RUN_ID}`;
   const MODERATOR_ID = `moder-${RUN_ID}`;
 
