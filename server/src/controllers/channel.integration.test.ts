@@ -496,6 +496,166 @@ describe('Integration Test: GET /api/channels/:id/members (PostgreSQL)', () => {
   });
 });
 
+describe('Integration Test: GET /api/channels/:id/members/suggestions (PostgreSQL)', () => {
+  const PLAIN_ID = `sugplain-${RUN_ID}`;
+  const ALREADY_ID = `sugmember-${RUN_ID}`;
+  const FRAGMENT = `sug-${RUN_ID}`;
+  const CANDIDATES = ['a', 'b', 'c', 'd', 'e', 'f'].map(
+    (letter) => `sug-${RUN_ID}-${letter}@corp.messenger.com`,
+  );
+  const ALREADY_EMAIL = `sug-${RUN_ID}-member@corp.messenger.com`;
+
+  const createSupportUsers = async (): Promise<void> => {
+    const emails = [...CANDIDATES, ALREADY_EMAIL, `sug-${RUN_ID}-plain@corp.messenger.com`];
+    const ids = [
+      ...CANDIDATES.map((_, index) => `sug-cand-${RUN_ID}-${index}`),
+      ALREADY_ID,
+      PLAIN_ID,
+    ];
+
+    await prisma.user.createMany({
+      data: emails.map((email, index) => ({
+        id: ids[index],
+        fullName: `Кандидат ${index + 1}`,
+        email,
+        passwordHash: 'test-hash',
+        globalRole: 'USER' as const,
+        status: 'ACTIVE' as const,
+      })),
+    });
+  };
+
+  const cleanupSuggestions = async (): Promise<void> => {
+    await prisma.channel.deleteMany({ where: { name: { startsWith: 'suggest-' } } });
+    await prisma.user.deleteMany({ where: { email: { contains: FRAGMENT } } });
+    await prisma.user.deleteMany({ where: { id: USER_ID } });
+  };
+
+  const plainAuth = (): string => signAccessToken({ sub: PLAIN_ID, role: 'USER' });
+
+  const createOwnChannel = async (): Promise<string> => {
+    const response = await request(app)
+      .post('/api/channels')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ name: `suggest-channel-${RUN_ID}`, type: 'PRIVATE' });
+    return response.body.id as string;
+  };
+
+  beforeAll(async () => {
+    await cleanupSuggestions();
+    await createTestUser();
+    await createSupportUsers();
+  });
+
+  afterAll(async () => {
+    await cleanupSuggestions();
+    await disconnectDatabase();
+  });
+
+  it('владелец получает до пяти подсказок без уже добавленных участников', async () => {
+    const channelId = await createOwnChannel();
+    await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: ALREADY_EMAIL });
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .query({ email: FRAGMENT });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveLength(5);
+
+    const emails = response.body.map((suggestion: { email: string }) => suggestion.email);
+    expect(emails).not.toContain(ALREADY_EMAIL);
+    expect(emails).toEqual(expect.arrayContaining(CANDIDATES.slice(0, 5)));
+
+    const first = response.body[0];
+    expect(Object.keys(first).sort()).toEqual(['email', 'fullName']);
+  });
+
+  it('поиск нечувствателен к регистру введённого фрагмента', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .query({ email: FRAGMENT.toUpperCase() });
+
+    expect(response.status).toBe(200);
+    expect(response.body.length).toBeGreaterThan(0);
+  });
+
+  it('пустой фрагмент возвращает пустой список', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .query({ email: '   ' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it('отсутствие параметра email тоже даёт пустой список', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${authToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
+  it('подсказки недоступны пользователю вне канала (403)', async () => {
+    const channelId = await createOwnChannel();
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${plainAuth()}`)
+      .query({ email: FRAGMENT });
+
+    expect(response.status).toBe(403);
+    expect(response.body.message).toContain('владельцу или модератору');
+  });
+
+  it('подсказки недоступны рядовому участнику (403)', async () => {
+    const channelId = await createOwnChannel();
+    await request(app)
+      .post(`/api/channels/${channelId}/members`)
+      .set('Authorization', `Bearer ${authToken()}`)
+      .send({ email: `sug-${RUN_ID}-plain@corp.messenger.com` });
+
+    const response = await request(app)
+      .get(`/api/channels/${channelId}/members/suggestions`)
+      .set('Authorization', `Bearer ${plainAuth()}`)
+      .query({ email: FRAGMENT });
+
+    expect(response.status).toBe(403);
+  });
+
+  it('несуществующий канал возвращает 404', async () => {
+    const response = await request(app)
+      .get('/api/channels/00000000-0000-4000-8000-000000000000/members/suggestions')
+      .set('Authorization', `Bearer ${authToken()}`)
+      .query({ email: FRAGMENT });
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('не найден');
+  });
+
+  it('возвращает 401 без токена', async () => {
+    const response = await request(app)
+      .get('/api/channels/00000000-0000-4000-8000-000000000000/members/suggestions')
+      .query({ email: FRAGMENT });
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('Integration Test: POST /api/channels/:id/members (PostgreSQL)', () => {
   const INVITEE_ID = `invitee-${RUN_ID}`;
   const MEMBER_ID = `plain-${RUN_ID}`;
