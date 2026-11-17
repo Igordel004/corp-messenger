@@ -16,8 +16,24 @@ export interface AddedMember {
   role: ChannelRole;
 }
 
+export interface MemberSuggestion {
+  fullName: string;
+  email: string;
+}
+
 export const fetchChannelMembers = async (channelId: string): Promise<ChannelMember[]> => {
   const response = await apiClient.get<ChannelMember[]>(`/channels/${channelId}/members`);
+  return response.data;
+};
+
+export const fetchMemberSuggestions = async (
+  channelId: string,
+  email: string,
+): Promise<MemberSuggestion[]> => {
+  const response = await apiClient.get<MemberSuggestion[]>(
+    `/channels/${channelId}/members/suggestions`,
+    { params: { email } },
+  );
   return response.data;
 };
 
