@@ -74,6 +74,18 @@ export type ChangeRoleResult =
   | { status: 'owner_protected' }
   | { status: 'role_unchanged' };
 
+export interface MemberSuggestion {
+  fullName: string;
+  email: string;
+}
+
+export type SuggestMembersResult =
+  | { status: 'ok'; suggestions: MemberSuggestion[] }
+  | { status: 'not_found' }
+  | { status: 'forbidden' };
+
+const SUGGESTION_LIMIT = 5;
+
 // Уникальный индекс (user, channel) превращает гонку параллельных
 // вступлений в отказ «уже участник» вместо дубля
 const isUniqueViolation = (error: unknown): boolean =>
@@ -199,6 +211,43 @@ export class ChannelService {
         joinedAt: member.joinedAt,
       })),
     };
+  }
+
+  async suggestMembers(
+    channelId: string,
+    requesterId: string,
+    query: string,
+  ): Promise<SuggestMembersResult> {
+    const channel = await this.prisma.channel.findUnique({
+      where: { id: channelId },
+      include: { members: { where: { userId: requesterId }, select: { role: true } } },
+    });
+
+    if (!channel) {
+      return { status: 'not_found' };
+    }
+
+    const requesterRole = channel.members[0]?.role;
+    if (requesterRole !== ChannelRole.OWNER && requesterRole !== ChannelRole.MODERATOR) {
+      return { status: 'forbidden' };
+    }
+
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return { status: 'ok', suggestions: [] };
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { contains: trimmed, mode: 'insensitive' },
+        memberships: { none: { channelId } },
+      },
+      select: { fullName: true, email: true },
+      orderBy: { email: 'asc' },
+      take: SUGGESTION_LIMIT,
+    });
+
+    return { status: 'ok', suggestions: users };
   }
 
   async addMember(

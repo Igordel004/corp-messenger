@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   fetchChannelMembers,
   addChannelMemberByEmail,
+  fetchMemberSuggestions,
   removeChannelMemberById,
   changeMemberRole,
   type ChannelMember,
+  type MemberSuggestion,
 } from '../api/members';
 import { type ChannelRole } from '../api/channels';
 import { getApiErrorMessage } from '../api/client';
@@ -118,6 +120,9 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const [suggestions, setSuggestions] = useState<MemberSuggestion[]>([]);
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+  const suggestRequestRef = useRef(0);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -140,6 +145,33 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     loadMembers();
   }, [loadMembers]);
 
+  useEffect(() => {
+    const query = inviteEmail.trim();
+    const requestId = ++suggestRequestRef.current;
+
+    if (!query || !canAdd) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      fetchMemberSuggestions(channelId, query)
+        .then((data) => {
+          if (suggestRequestRef.current === requestId) {
+            setSuggestions(data);
+            setIsSuggestOpen(true);
+          }
+        })
+        .catch(() => {
+          if (suggestRequestRef.current === requestId) {
+            setSuggestions([]);
+          }
+        });
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [inviteEmail, channelId, canAdd]);
+
   const handleAdd = async (event: FormEvent) => {
     event.preventDefault();
     if (!inviteEmail.trim()) {
@@ -150,6 +182,8 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
     try {
       await addChannelMemberByEmail(channelId, inviteEmail.trim());
       setInviteEmail('');
+      setSuggestions([]);
+      setIsSuggestOpen(false);
       await loadMembers();
     } catch (requestError) {
       setError(getApiErrorMessage(requestError));
@@ -157,6 +191,14 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
       setIsAdding(false);
     }
   };
+
+  const handlePickSuggestion = (email: string) => {
+    setInviteEmail(email);
+    setSuggestions([]);
+    setIsSuggestOpen(false);
+  };
+
+  const handleCloseSuggest = () => setIsSuggestOpen(false);
 
   const handleRemove = async (userId: string) => {
     setRemovingUserId(userId);
@@ -226,14 +268,43 @@ export const MembersPanel = ({ channelId, myRole, width }: MembersPanelProps) =>
 
       {canAdd && (
         <form className="members__add" onSubmit={handleAdd} noValidate>
-          <input
-            className="input"
-            type="email"
-            value={inviteEmail}
-            placeholder="Email сотрудника"
-            aria-label="Email приглашаемого сотрудника"
-            onChange={(event) => setInviteEmail(event.target.value)}
-          />
+          <div className="members__invite">
+            <input
+              className="input"
+              type="email"
+              value={inviteEmail}
+              placeholder="Email сотрудника"
+              aria-label="Email приглашаемого сотрудника"
+              aria-autocomplete="list"
+              aria-expanded={isSuggestOpen && suggestions.length > 0}
+              autoComplete="off"
+              onChange={(event) => setInviteEmail(event.target.value)}
+              onFocus={() => suggestions.length > 0 && setIsSuggestOpen(true)}
+              onBlur={handleCloseSuggest}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  handleCloseSuggest();
+                }
+              }}
+            />
+            {isSuggestOpen && suggestions.length > 0 && (
+              <ul className="members__suggest" role="listbox" aria-label="Подсказки email">
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion.email} className="members__suggest__item" role="option">
+                    <button
+                      type="button"
+                      className="members__suggest__button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handlePickSuggestion(suggestion.email)}
+                    >
+                      <span className="members__suggest__name">{suggestion.fullName}</span>
+                      <span className="members__suggest__email">{suggestion.email}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <button type="submit" className="button button--secondary" disabled={isAdding}>
             {isAdding ? 'Добавление...' : 'Добавить участника'}
           </button>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { fetchUserChannels, type UserChannel } from '../api/channels';
@@ -71,6 +71,15 @@ export const AppLayout = () => {
     navigate('/login', { replace: true });
   };
 
+  const togglePage =
+    (isOpen: boolean) =>
+    (event: MouseEvent<HTMLAnchorElement>): void => {
+      if (isOpen) {
+        event.preventDefault();
+        navigate('/');
+      }
+    };
+
   const handleChannelCreated = (channel: {
     id: string;
     name: string;
@@ -102,6 +111,7 @@ export const AppLayout = () => {
               to="/profile"
               className={`app-header__identity${isProfileOpen ? ' app-header__identity--active' : ''}`}
               aria-label="Перейти к профилю"
+              onClick={togglePage(isProfileOpen)}
             >
               <span className="app-header__name">{user.fullName}</span>
               <span className="app-header__email">{user.email}</span>
@@ -132,6 +142,7 @@ export const AppLayout = () => {
             <Link
               to="/catalog"
               className={`sidebar__link${isCatalogOpen ? ' sidebar__link--active' : ''}`}
+              onClick={togglePage(isCatalogOpen)}
             >
               Каталог
             </Link>
@@ -139,6 +150,7 @@ export const AppLayout = () => {
               <Link
                 to="/admin"
                 className={`sidebar__link${isAdminOpen ? ' sidebar__link--active' : ''}`}
+                onClick={togglePage(isAdminOpen)}
               >
                 Администрирование
               </Link>

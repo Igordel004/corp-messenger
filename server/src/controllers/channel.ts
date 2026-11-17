@@ -76,6 +76,24 @@ export const createChannelRouter = (channelService: ChannelService): express.Rou
     }
   });
 
+  router.get('/:id/members/suggestions', requireAuth, async (req: Request, res: Response) => {
+    const { id: channelId } = req.params as { id: string };
+    const query = typeof req.query.email === 'string' ? req.query.email : '';
+
+    const result = await channelService.suggestMembers(channelId, req.session!.sub, query);
+
+    switch (result.status) {
+      case 'not_found':
+        res.status(404).json({ message: 'Канал не найден' });
+        return;
+      case 'forbidden':
+        res.status(403).json({ message: 'Подсказки доступны владельцу или модератору канала' });
+        return;
+      case 'ok':
+        res.status(200).json(result.suggestions);
+    }
+  });
+
   router.get('/:id/members', requireAuth, async (req: Request, res: Response): Promise<void> => {
     const { id: channelId } = req.params as { id: string };
     const result = await channelService.listMembers(channelId, req.session!.sub);
